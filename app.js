@@ -44,7 +44,7 @@ createApp({
       console.log('File:', uploadedFile.value);
       
       // Fake Output for demonstration
-      analysisResult.value = `Analysis of: "${messageText.value.substring(0, 50)}${messageText.value.length > 50 ? '...' : ''}"\n\nClaims identified: 2\nPremises found: 4\nArgument structure: Deductive\n\nDetailed analysis would appear here...`;
+      analysisResult.value = `This is a fake analysis of: "${messageText.value.substring(0, 50)}${messageText.value.length > 50 ? '...' : ''}"\n\nClaims identified: 2\nPremises found: 4\nArgument structure: Deductive\n\nDetailed analysis and a new browser tab to a graph would appear here...`;
       
       // Clear inputs after sending
       messageText.value = '';
