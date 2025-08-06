@@ -1,41 +1,56 @@
 <template>
   <div class="input-area">
+    <!-- Model Selection Dropdown -->
+    <div class="model-selection">
+      <label for="model-select" class="model-label">Model:</label>
+      <select
+        id="model-select"
+        v-model="selectedModel"
+        class="model-dropdown"
+        :disabled="isAnalyzing"
+      >
+        <option value="openai">OpenAI</option>
+        <option value="modernbert">ModernBERT</option>
+        <option value="tinyllama">TinyLlama</option>
+      </select>
+    </div>
+
     <div class="input-container" ref="inputContainer">
-      <input 
-        ref="fileInput" 
-        type="file" 
-        accept=".txt,.md" 
-        @change="handleFileUpload" 
-        hidden 
+      <input
+        ref="fileInput"
+        type="file"
+        accept=".txt,.md"
+        @change="handleFileUpload"
+        hidden
       />
 
-      <button 
-        @click="triggerFileUpload" 
-        class="file-upload-button" 
+      <button
+        @click="triggerFileUpload"
+        class="file-upload-button"
         :disabled="isAnalyzing"
       >
         📎
       </button>
-      
+
       <div class="textarea-wrapper">
-        <textarea 
+        <textarea
           ref="textarea"
-          v-model="textInput" 
+          v-model="textInput"
           @keydown.enter.exact.prevent="handleSendMessage"
           @keydown.enter.shift.exact="insertNewLine"
           @input="autoResize"
           @keyup="autoResize"
           @paste="handlePaste"
-          placeholder="Type your message here... (Enter to send, Shift+Enter for new line)" 
+          placeholder="Type your message here... (Enter to send, Shift+Enter for new line)"
           class="text-input"
-          rows="1" 
-          :disabled="isAnalyzing" 
+          rows="1"
+          :disabled="isAnalyzing"
         />
       </div>
-      
-      <button 
-        @click="handleSendMessage" 
-        :disabled="!canSend || isAnalyzing" 
+
+      <button
+        @click="handleSendMessage"
+        :disabled="!canSend || isAnalyzing"
         class="send-button"
       >
         {{ isAnalyzing ? '⏳' : '📤' }}
@@ -49,8 +64,8 @@
 
     <div v-if="error" class="error-message">
         <span class="error-text">{{ error }}</span>
-  <button 
-    @click="clearErrorMessage" 
+  <button
+    @click="clearErrorMessage"
     class="dismiss-error-button"
     aria-label="Dismiss error"
   >
@@ -73,7 +88,7 @@ const inputContainer = ref(null)
 const MIN_HEIGHT = 48
 const MAX_HEIGHT = 256
 
-const { isAnalyzing, error, sendMessage } = useChat()
+const { isAnalyzing, error, sendMessage, selectedModel, setModel } = useChat()
 
 const canSend = computed(() => {
   return textInput.value.trim() || selectedFile.value
@@ -85,10 +100,10 @@ const autoResize = async () => {
 
   const element = textarea.value
   const container = inputContainer.value
-  
+
   // Reset height to get accurate scrollHeight
   element.style.height = `${MIN_HEIGHT}px`
-  
+
   // Handle empty text case
   if (!textInput.value.trim()) {
     element.style.height = `${MIN_HEIGHT}px`
@@ -96,19 +111,19 @@ const autoResize = async () => {
     container.style.marginTop = '0px'
     return
   }
-  
+
   const scrollHeight = element.scrollHeight
   const newHeight = Math.min(Math.max(scrollHeight, MIN_HEIGHT), MAX_HEIGHT)
-  
+
   // Calculate how much to move up (difference from minimum height)
   const heightDifference = newHeight - MIN_HEIGHT
-  
+
   // Set the new height
   element.style.height = `${newHeight}px`
-  
+
   // Move the entire input container up by the height difference
   container.style.marginTop = `-${heightDifference}px`
-  
+
   // Enable/disable scrolling based on content
   if (scrollHeight > MAX_HEIGHT) {
     element.style.overflowY = 'auto'
@@ -130,7 +145,7 @@ const insertNewLine = () => {
   const textBefore = textInput.value.substring(0, cursorPos)
   const textAfter = textInput.value.substring(cursorPos)
   textInput.value = textBefore + '\n' + textAfter
-  
+
   nextTick(() => {
     textarea.value.setSelectionRange(cursorPos + 1, cursorPos + 1)
     autoResize()
@@ -176,7 +191,7 @@ const handleSendMessage = async () => {
   // Clear inputs after sending
   textInput.value = ''
   clearSelectedFile()
-  
+
   // Reset textarea to minimum size
   resetTextarea()
 }
@@ -200,6 +215,46 @@ onMounted(() => {
   /* border-top: 1px solid #4a5568; */
   /* background: #2d3748; */
   margin-bottom: 16px;
+}
+
+.model-selection {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  background: #4a5568;
+  border-radius: 6px;
+  border: 1px solid #718096;
+}
+
+.model-label {
+  color: #e2e8f0;
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.model-dropdown {
+  background: #2d3748;
+  color: #ffffff;
+  border: 1px solid #718096;
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 14px;
+  cursor: pointer;
+  min-width: 120px;
+}
+
+.model-dropdown:focus {
+  outline: none;
+  border-color: #4299e1;
+  box-shadow: 0 0 0 1px #4299e1;
+}
+
+.model-dropdown:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .input-container {
@@ -345,7 +400,7 @@ onMounted(() => {
   padding: 0;                   /* no extra padding */
   border: none;
   border-radius: 50%;           /* make it a circle */
-  background: rgba(229, 62, 62, 0.7);  /* <-- alpha = 0.5 for 50% opacity */  
+  background: rgba(229, 62, 62, 0.7);  /* <-- alpha = 0.5 for 50% opacity */
   color: white;                 /* white “×” */
   font-size: 16px;              /* big enough to see */
   line-height: 1;               /* center the “×” vertically */

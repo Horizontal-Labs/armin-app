@@ -3,15 +3,15 @@ import { z } from 'zod'
 
 // Zod Schemas
 const TextAnalysisRequestSchema = z.object({
-  text: z.string().min(1, 'Text cannot be empty'),
-  chatId: z.string(),
-  analysisMode: z.enum(['comprehensive', 'quick', 'detailed']).default('comprehensive'),
+  message: z.string().min(1, 'Message cannot be empty'),
+  session_id: z.string(),
+  model: z.enum(['modernbert', 'openai', 'tinyllama']).default('openai'),
 })
 
 const FileAnalysisRequestSchema = z.object({
   file: z.instanceof(File),
-  chatId: z.string(),
-  analysisMode: z.enum(['comprehensive', 'quick', 'detailed']).default('comprehensive'),
+  session_id: z.string(),
+  model: z.enum(['modernbert', 'openai', 'tinyllama']).default('openai'),
 })
 
 // Type definitions
@@ -71,8 +71,9 @@ const chatHistory: Ref<ChatItem[]> = ref([])
 const messages: Ref<Map<string, Message[]>> = ref(new Map())
 const isAnalyzing: Ref<boolean> = ref(false)
 const error: Ref<string> = ref('')
+const selectedModel: Ref<'modernbert' | 'openai' | 'tinyllama'> = ref('openai')
 
-const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000'
+const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 
 export interface UseChatReturn {
   // State
@@ -81,12 +82,14 @@ export interface UseChatReturn {
   currentMessages: ComputedRef<Message[]>
   isAnalyzing: Ref<boolean>
   error: Ref<string>
+  selectedModel: Ref<'modernbert' | 'openai' | 'tinyllama'>
 
   // Methods
   startNewChat: () => string
   deleteChat: (chatId: string) => void
   selectChat: (chatId: string) => void
   sendMessage: (messageData: MessageData) => Promise<void>
+  setModel: (model: 'modernbert' | 'openai' | 'tinyllama') => void
   loadData: () => void
   formatDate: (date: string | number | Date) => string
   formatTime: (date: string | number | Date) => string
@@ -238,38 +241,29 @@ export function useChat(): UseChatReturn {
       let response: Response
 
       if (file) {
-        // File analysis
-        const requestData = FileAnalysisRequestSchema.parse({
-          file,
-          chatId,
-        })
-
-        const formData = new FormData()
-        formData.append('file', requestData.file)
-        formData.append('chatId', requestData.chatId)
-        formData.append('analysisMode', requestData.analysisMode)
-        if (text?.trim()) {
-          formData.append('additionalText', text.trim())
-        }
-
-        response = await fetch(`${API_BASE_URL}/api/analyze/file`, {
-          method: 'POST',
-          body: formData,
-        })
+        // File analysis - Not supported by current backend
+        throw new Error('File analysis is not supported by the current backend')
       } else {
         // Text analysis
         const requestData = TextAnalysisRequestSchema.parse({
-          text: text!.trim(),
-          chatId,
+          message: text!.trim(),
+          session_id: chatId,
+          model: selectedModel.value,
         })
 
-        response = await fetch(`${API_BASE_URL}/api/analyze/text`, {
+        console.log('Sending request to:', `${API_BASE_URL}/chat/send`)
+        console.log('Request data:', requestData)
+
+        response = await fetch(`${API_BASE_URL}/chat/send`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify(requestData),
         })
+
+        console.log('Response status:', response.status)
+        console.log('Response ok:', response.ok)
       }
 
       if (!response.ok) {
@@ -277,6 +271,7 @@ export function useChat(): UseChatReturn {
       }
 
       const result: unknown = await response.json()
+      console.log('Response data:', result)
 
       // Update assistant message with results
       updateMessage(chatId, assistantMessageId, {
@@ -324,6 +319,10 @@ export function useChat(): UseChatReturn {
     }
   }
 
+  const setModel = (model: 'modernbert' | 'openai' | 'tinyllama'): void => {
+    selectedModel.value = model
+  }
+
   const loadData = (): void => {
     try {
       // Load chat history
@@ -356,12 +355,14 @@ export function useChat(): UseChatReturn {
     currentMessages,
     isAnalyzing,
     error,
+    selectedModel,
 
     // Methods
     startNewChat,
     deleteChat,
     selectChat,
     sendMessage,
+    setModel,
     loadData,
     formatDate,
     formatTime,
