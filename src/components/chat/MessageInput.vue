@@ -19,7 +19,7 @@
       <input
         ref="fileInput"
         type="file"
-        accept=".txt,.md"
+        accept=".pdf"
         @change="handleFileUpload"
         hidden
       />
@@ -28,6 +28,7 @@
         @click="triggerFileUpload"
         class="file-upload-button"
         :disabled="isAnalyzing"
+        title="Upload PDF file"
       >
         📎
       </button>
@@ -62,6 +63,10 @@
       <button @click="clearSelectedFile" class="clear-file">✕</button>
     </div>
 
+    <div v-if="isExtractingPdf" class="pdf-extracting">
+      🔄 Extracting text from PDF...
+    </div>
+
     <div v-if="error" class="error-message">
         <span class="error-text">{{ error }}</span>
   <button
@@ -78,12 +83,18 @@
 <script setup>
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { useChat } from '@/composables/useChat'
+import * as pdfjsLib from 'pdfjs-dist'
+import workerSrc from 'pdfjs-dist/build/pdf.worker.mjs?url'
+
+// Configure PDF.js worker to use local bundled worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc
 
 const textInput = ref('')
 const selectedFile = ref(null)
 const fileInput = ref(null)
 const textarea = ref(null)
 const inputContainer = ref(null)
+const isExtractingPdf = ref(false)
 
 const MIN_HEIGHT = 48
 const MAX_HEIGHT = 256
@@ -156,10 +167,83 @@ const triggerFileUpload = () => {
   fileInput.value?.click()
 }
 
-const handleFileUpload = (event) => {
+const extractTextFromPdf = async (file) => {
+  try {
+    isExtractingPdf.value = true
+
+    // Read the file as ArrayBuffer
+    const arrayBuffer = await file.arrayBuffer()
+
+    // Load the PDF document
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+
+    let fullText = ''
+
+    // Extract text from each page
+    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+      const page = await pdf.getPage(pageNum)
+      const textContent = await page.getTextContent()
+
+      // Combine text items from the page
+      const pageText = textContent.items
+        .map(item => item.str)
+        .join(' ')
+
+      fullText += pageText + '\n'
+    }
+
+    return fullText.trim()
+  } catch (err) {
+    console.error('Error extracting text from PDF:', err)
+    throw new Error('Failed to extract text from PDF. Please ensure the file is a valid PDF.')
+  } finally {
+    isExtractingPdf.value = false
+  }
+}
+
+const handleFileUpload = async (event) => {
   const file = event.target.files?.[0]
   if (file) {
-    selectedFile.value = file
+    // Check if it's a PDF (fallback to extension check if type is missing)
+    const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name)
+    if (!isPdf) {
+      error.value = 'Please select a PDF file'
+      return
+    }
+
+    // Check file size (limit to 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      error.value = 'PDF file is too large. Please select a file smaller than 10MB.'
+      return
+    }
+
+    try {
+      // Extract text from PDF
+      const extractedText = await extractTextFromPdf(file)
+
+      // Check if text was extracted
+      if (!extractedText || extractedText.trim().length === 0) {
+        error.value = 'No text could be extracted from this PDF. The file might be image-based or corrupted.'
+        return
+      }
+
+      // Set the extracted text to the textarea
+      textInput.value = extractedText
+
+      // Store the file reference for display
+      selectedFile.value = file
+
+      // Auto-resize the textarea
+      await nextTick()
+      autoResize()
+
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to extract text from PDF. Please ensure the file is a valid PDF.'
+      // Clear the file input
+      if (fileInput.value) {
+        fileInput.value.value = ''
+      }
+    }
   }
 }
 
@@ -182,8 +266,7 @@ const handleSendMessage = async () => {
   if (!canSend.value || isAnalyzing.value) return
 
   const messageData = {
-    text: textInput.value,
-    file: selectedFile.value
+    text: textInput.value
   }
 
   await sendMessage(messageData)
@@ -413,6 +496,19 @@ onMounted(() => {
 
 .dismiss-error-button:hover {
   color: #c53030;
+}
+
+.pdf-extracting {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: rgba(255, 193, 7, 0.1);
+  border: 1px solid #ffc107;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #ffc107;
 }
 
 @media (max-width: 768px) {

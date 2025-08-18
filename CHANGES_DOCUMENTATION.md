@@ -388,3 +388,51 @@ if (!response.ok) {
 - Graph shows by default for better UX
 - Zoom controls are clickable instead of scroll-based
 - Model name prominently displayed in header 
+
+## Feature 3: PDF Upload and Text Extraction (Frontend-only)
+
+### 1. Dependency Added
+- **File:** `package.json`
+- **Change:** Added `pdfjs-dist` to dependencies
+  - Version: `^5.4.54`
+
+### 2. Files Modified
+- **File:** `src/components/chat/MessageInput.vue`
+  - Updated file input to accept only PDFs (`accept=".pdf"`).
+  - Integrated PDF.js for text extraction:
+    - Imported library and configured a locally bundled worker so it works offline and during dev/build.
+      ```ts
+      import * as pdfjsLib from 'pdfjs-dist'
+      import workerSrc from 'pdfjs-dist/build/pdf.worker.mjs?url'
+      pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc
+      ```
+    - Implemented `extractTextFromPdf(file)` to iterate pages and concatenate text items:
+      ```ts
+      const page = await pdf.getPage(pageNum)
+      const textContent = await page.getTextContent()
+      const pageText = textContent.items.map(item => item.str).join(' ')
+      ```
+  - Added UI state and indicator while extracting: `isExtractingPdf` and a small status box.
+  - Input validation improvements:
+    - Accept by MIME type or `.pdf` extension (handles browsers that omit `file.type`).
+    - File size limit: 10MB.
+    - Graceful error messages for invalid/empty-text PDFs.
+  - Flow alignment with existing architecture:
+    - Extracted text is placed into the existing textarea.
+    - Sending uses the existing text endpoint; no file upload to backend.
+      ```ts
+      const messageData = { text: textInput.value }
+      await sendMessage(messageData)
+      ```
+
+### 3. Behavior and UX
+- Click the paperclip, select a PDF.
+- While extracting, a short progress message is shown.
+- Extracted text appears in the textarea, so users can edit it before sending.
+- Submit uses the same `/chat/send` API flow as manual text.
+
+### 4. Backend Changes
+- None. The backend was not modified for this feature. The frontend converts PDFs to plain text and reuses the existing text analysis endpoint.
+
+### 5. Known Limitations
+- Image-only or password-protected PDFs will not produce text. OCR or a password would be required, which is out of scope for this change.
