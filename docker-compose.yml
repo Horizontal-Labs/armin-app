@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  armin-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: armin-frontend
+    ports:
+      - "10123:80"
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
+    networks:
+      - armin-network
+
+networks:
+  armin-network:
+    driver: bridge
