@@ -5,13 +5,15 @@ import { z } from 'zod'
 const TextAnalysisRequestSchema = z.object({
   message: z.string().min(1, 'Message cannot be empty'),
   session_id: z.string(),
-  model: z.enum(['modernbert', 'openai', 'tinyllama']).default('openai'),
+  adu_classifier_model: z.enum(['modernbert', 'openai', 'tinyllama', 'deberta']).default('openai'),
+  stance_classifier_model: z.enum(['modernbert', 'openai', 'tinyllama', 'deberta']).default('openai'),
 })
 
 const FileAnalysisRequestSchema = z.object({
   file: z.instanceof(File),
   session_id: z.string(),
-  model: z.enum(['modernbert', 'openai', 'tinyllama']).default('openai'),
+  adu_classifier_model: z.enum(['modernbert', 'openai', 'tinyllama', 'deberta']).default('openai'),
+  stance_classifier_model: z.enum(['modernbert', 'openai', 'tinyllama', 'deberta']).default('openai'),
 })
 
 // Type definitions
@@ -71,7 +73,8 @@ const chatHistory: Ref<ChatItem[]> = ref([])
 const messages: Ref<Map<string, Message[]>> = ref(new Map())
 const isAnalyzing: Ref<boolean> = ref(false)
 const error: Ref<string> = ref('')
-const selectedModel: Ref<'modernbert' | 'openai' | 'tinyllama'> = ref('openai')
+const selectedAduModel: Ref<'modernbert' | 'openai' | 'tinyllama' | 'deberta'> = ref('openai')
+const selectedStanceModel: Ref<'modernbert' | 'openai' | 'tinyllama' | 'deberta'> = ref('openai')
 
 const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 
@@ -82,14 +85,16 @@ export interface UseChatReturn {
   currentMessages: ComputedRef<Message[]>
   isAnalyzing: Ref<boolean>
   error: Ref<string>
-  selectedModel: Ref<'modernbert' | 'openai' | 'tinyllama'>
+  selectedAduModel: Ref<'modernbert' | 'openai' | 'tinyllama' | 'deberta'>
+  selectedStanceModel: Ref<'modernbert' | 'openai' | 'tinyllama' | 'deberta'>
 
   // Methods
   startNewChat: () => string
   deleteChat: (chatId: string) => void
   selectChat: (chatId: string) => void
   sendMessage: (messageData: MessageData) => Promise<void>
-  setModel: (model: 'modernbert' | 'openai' | 'tinyllama') => void
+  setAduModel: (model: 'modernbert' | 'openai' | 'tinyllama' | 'deberta') => void
+  setStanceModel: (model: 'modernbert' | 'openai' | 'tinyllama' | 'deberta') => void
   loadData: () => void
   formatDate: (date: string | number | Date) => string
   formatTime: (date: string | number | Date) => string
@@ -248,7 +253,8 @@ export function useChat(): UseChatReturn {
         const requestData = TextAnalysisRequestSchema.parse({
           message: text!.trim(),
           session_id: chatId,
-          model: selectedModel.value,
+          adu_classifier_model: selectedAduModel.value,
+          stance_classifier_model: selectedStanceModel.value,
         })
 
         console.log('Sending request to:', `${API_BASE_URL}/chat/send`)
@@ -319,8 +325,12 @@ export function useChat(): UseChatReturn {
     }
   }
 
-  const setModel = (model: 'modernbert' | 'openai' | 'tinyllama'): void => {
-    selectedModel.value = model
+  const setAduModel = (model: 'modernbert' | 'openai' | 'tinyllama' | 'deberta'): void => {
+    selectedAduModel.value = model
+  }
+
+  const setStanceModel = (model: 'modernbert' | 'openai' | 'tinyllama' | 'deberta'): void => {
+    selectedStanceModel.value = model
   }
 
   const loadData = (): void => {
@@ -355,14 +365,16 @@ export function useChat(): UseChatReturn {
     currentMessages,
     isAnalyzing,
     error,
-    selectedModel,
+    selectedAduModel,
+    selectedStanceModel,
 
     // Methods
     startNewChat,
     deleteChat,
     selectChat,
     sendMessage,
-    setModel,
+    setAduModel,
+    setStanceModel,
     loadData,
     formatDate,
     formatTime,

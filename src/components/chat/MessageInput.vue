@@ -1,20 +1,5 @@
 <template>
   <div class="input-area">
-    <!-- Model Selection Dropdown -->
-    <div class="model-selection">
-      <label for="model-select" class="model-label">Model:</label>
-      <select
-        id="model-select"
-        v-model="selectedModel"
-        class="model-dropdown"
-        :disabled="isAnalyzing"
-      >
-        <option value="openai">OpenAI</option>
-        <option value="modernbert">ModernBERT</option>
-        <option value="tinyllama">TinyLlama</option>
-      </select>
-    </div>
-
     <div class="input-container" ref="inputContainer">
       <input
         ref="fileInput"
@@ -54,7 +39,7 @@
         :disabled="!canSend || isAnalyzing"
         class="send-button"
       >
-        {{ isAnalyzing ? '⏳' : '📤' }}
+        {{ isAnalyzing ? '⏳' : '➡️' }}
       </button>
     </div>
 
@@ -65,6 +50,39 @@
 
     <div v-if="isExtractingPdf" class="pdf-extracting">
       🔄 Extracting text from PDF...
+    </div>
+
+    <!-- Model Selection Dropdowns -->
+    <div class="model-selection">
+      <div class="model-group">
+        <label for="adu-select" class="model-label">ADU Classifier:</label>
+        <select
+          id="adu-select"
+          v-model="selectedAduModel"
+          class="model-dropdown"
+          :disabled="isAnalyzing"
+        >
+          <option value="openai">OpenAI</option>
+          <option value="modernbert">ModernBERT</option>
+          <option value="tinyllama">TinyLlama</option>
+          <option value="deberta">DeBERTa</option>
+        </select>
+      </div>
+      
+      <div class="model-group">
+        <label for="stance-select" class="model-label">Stance Classifier:</label>
+        <select
+          id="stance-select"
+          v-model="selectedStanceModel"
+          class="model-dropdown"
+          :disabled="isAnalyzing"
+        >
+          <option value="openai">OpenAI</option>
+          <option value="modernbert">ModernBERT</option>
+          <option value="tinyllama">TinyLlama</option>
+          <option value="deberta">DeBERTa</option>
+        </select>
+      </div>
     </div>
 
     <div v-if="error" class="error-message">
@@ -99,7 +117,7 @@ const isExtractingPdf = ref(false)
 const MIN_HEIGHT = 48
 const MAX_HEIGHT = 256
 
-const { isAnalyzing, error, sendMessage, selectedModel, setModel } = useChat()
+const { isAnalyzing, error, sendMessage, selectedAduModel, selectedStanceModel, setAduModel, setStanceModel } = useChat()
 
 const canSend = computed(() => {
   return textInput.value.trim() || selectedFile.value
@@ -303,12 +321,19 @@ onMounted(() => {
 .model-selection {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: 20px;
+  margin-top: 12px;
   padding: 8px 12px;
   background: #4a5568;
   border-radius: 6px;
   border: 1px solid #718096;
+  flex-wrap: wrap;
+}
+
+.model-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .model-label {

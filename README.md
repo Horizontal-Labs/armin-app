@@ -35,10 +35,9 @@ A modern Vue.js 3 frontend application for argument mining and analysis, featuri
 
 ## 📋 Prerequisites
 
-- **Node.js**: Version 16 or higher
+- **Node.js**: LTS 22.18.0 Version
 - **npm**: Node package manager
 - **Backend API**: The argument-mining-api backend must be running
-- **API Keys**: OpenAI and Hugging Face tokens configured in the backend
 
 ## 🚀 Installation
 
@@ -69,31 +68,11 @@ The frontend connects to the backend API at `http://localhost:8000`. Make sure:
 - API keys are set in the backend environment
 
 ### Environment Variables
-Create a `.env` file in the root directory if needed:
+Create a `.env` file in the root directory to specify the argument-mining-api URL:
 ```env
 VITE_API_BASE_URL=http://localhost:8000
 ```
 
-## 📖 Usage
-
-### Basic Workflow
-1. **Select a Model**: Choose from the dropdown (modernbert, tinyllama, openai)
-2. **Enter Text**: Type or paste your text in the input field
-3. **Send for Analysis**: Click the send button to process your text
-4. **View Results**: See the analysis results and interactive graph
-5. **Interact with Graph**: Use zoom controls to explore the argument structure
-
-### Graph Controls
-- **Zoom In** (➕): Increase graph magnification
-- **Zoom Out** (➖): Decrease graph magnification
-- **Reset** (🔄): Return to default zoom level
-- **Show/Hide**: Toggle graph visibility
-
-### Understanding the Graph
-- **Nodes**: Represent claims (blue) and premises (green)
-- **Edges**: Show stance relations between claims and premises
-- **PRO Edges**: Green arrows indicating supporting relationships
-- **CON Edges**: Red arrows indicating opposing relationships
 
 ## 🏗️ Project Structure
 
@@ -138,49 +117,6 @@ npm run lint
 
 ### Development Server
 The development server runs on `http://localhost:5173` with hot module replacement (HMR) enabled.
-
-## 🔗 API Integration
-
-### Backend Requirements
-- **Endpoint**: `POST /chat/send`
-- **Request Format**:
-  ```json
-  {
-    "session_id": "string",
-    "model": "modernbert|tinyllama|openai",
-    "message": "text to analyze"
-  }
-  ```
-- **Response Format**:
-  ```json
-  {
-    "message": "original text",
-    "session_id": "string",
-    "model": "string",
-    "output": {
-      "claims": [...],
-      "premises": [...],
-      "stance_relations": [...]
-    }
-  }
-  ```
-
-## 🎨 Customization
-
-### Styling
-The application uses modern CSS with:
-- Responsive design principles
-- Clean, minimalist aesthetic
-- Accessible color schemes
-- Smooth animations and transitions
-
-### Graph Customization
-Graph styling can be modified in `ArgumentGraph.vue`:
-- Node colors and sizes
-- Edge styles and colors
-- Layout parameters
-- Zoom behavior
-
 ## 🐛 Troubleshooting
 
 ### Common Issues
@@ -205,28 +141,7 @@ Enable debug logging by checking the browser console for detailed API request/re
 
 ## 📚 Documentation
 
-For detailed information about changes and implementation, see:
-- `CHANGES_DOCUMENTATION.md` - Comprehensive change history
 - Backend repository: [argument-mining-api](https://github.com/Horizontal-Labs/argument-mining-api)
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
-
-## 📄 License
-
-This project is part of the Horizontal-Labs argument mining system.
-
-## 🙏 Acknowledgments
-
-- **Cytoscape.js** for graph visualization
-- **Vue.js 3** for the reactive framework
-- **Vite** for the build system
-- **Horizontal-Labs** for the backend API
 
 ---
 

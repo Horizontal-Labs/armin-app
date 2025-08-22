@@ -28,13 +28,26 @@
             </div>
 
             <!-- Argument Graph -->
-            <ArgumentGraph :argument-data="argumentData" :model-name="message.analysis?.model || 'Unknown'" />
+            <ArgumentGraph 
+              :argument-data="argumentData" 
+              :adu-model="message.analysis?.adu_classifier_model || message.analysis?.model || 'Unknown'"
+              :stance-model="message.analysis?.stance_classifier_model || message.analysis?.model || 'Unknown'" 
+            />
 
             <!-- Raw JSON data (collapsible) -->
-            <details class="raw-data">
-              <summary>View Raw Data</summary>
-              <pre>{{ JSON.stringify(message.analysis, null, 2) }}</pre>
-            </details>
+            <div class="raw-data-container">
+              <details class="raw-data">
+                <summary>View Raw Data</summary>
+                <pre>{{ JSON.stringify(message.analysis, null, 2) }}</pre>
+              </details>
+              <button 
+                @click="copyToClipboard(JSON.stringify(message.analysis, null, 2))"
+                class="copy-button raw-copy"
+                title="Copy raw data"
+              >
+                {{ copiedText === JSON.stringify(message.analysis, null, 2) ? '✓' : '📋' }}
+              </button>
+            </div>
           </div>
 
           <!-- Fallback for non-argument data -->
@@ -44,14 +57,24 @@
         </div>
       </div>
     </div>
-    <div class="message-time">
-      {{ formatTime(message.timestamp) }}
+    <div class="message-footer">
+      <div class="message-time">
+        {{ formatTime(message.timestamp) }}
+      </div>
+      <button 
+        v-if="message.type === 'user' && message.text"
+        @click="copyToClipboard(message.text)"
+        class="copy-button-footer"
+        title="Copy to clipboard"
+      >
+        {{ copiedText === message.text ? '✓' : '📋' }}
+      </button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useChat } from '@/composables/useChat'
 import ArgumentGraph from './ArgumentGraph.vue'
 
@@ -87,6 +110,25 @@ interface Props {
 const props = defineProps<Props>()
 
 const { formatTime } = useChat()
+
+// Copy functionality
+const copiedText = ref<string | null>(null)
+
+const copyToClipboard = async (text: string) => {
+  if (!text) return
+  
+  try {
+    await navigator.clipboard.writeText(text)
+    copiedText.value = text
+    
+    // Reset after 2 seconds
+    setTimeout(() => {
+      copiedText.value = null
+    }, 2000)
+  } catch (err) {
+    console.error('Failed to copy text:', err)
+  }
+}
 
 // Parse argument data from the analysis
 const argumentData = computed<ArgumentData | null>(() => {
@@ -136,26 +178,65 @@ const argumentData = computed<ArgumentData | null>(() => {
 }
 
 .message-content {
-  max-width: 70%;
+  max-width: 90%;
+  width: 90%;
   padding: 12px 16px;
   border-radius: 12px;
   word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 .user-message {
   background: #4299e1;
   border : 1px solid #3182ce;
   border-radius: 12px;
-  padding: 12px;
+  padding: 16px 20px;
   color: white;
+  white-space: pre-wrap;
+  word-break: break-word;
+  position: relative;
+}
+
+.message-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 16px;
+}
+
+.copy-button-footer {
+  background: rgba(66, 153, 225, 0.15);
+  border: 1px solid rgba(66, 153, 225, 0.3);
+  border-radius: 6px;
+  color: #a0aec0;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 26px;
+}
+
+.copy-button-footer:hover {
+  background: rgba(66, 153, 225, 0.25);
+  border-color: rgba(66, 153, 225, 0.4);
+  color: #e2e8f0;
+}
+
+.copy-button-footer:active {
+  transform: scale(0.95);
 }
 
 .assistant-message {
   background: #4a5568;
   border: 1px solid #2d3748;
   border-radius: 12px;
-  padding: 12px;
+  padding: 16px 20px;
   color: #e2e8f0;
+  width: 100%;
 }
 
 .file-info {
@@ -178,6 +259,8 @@ const argumentData = computed<ArgumentData | null>(() => {
 
 .argument-analysis {
   width: 100%;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .analysis-summary {
@@ -211,20 +294,63 @@ const argumentData = computed<ArgumentData | null>(() => {
   font-weight: 600;
 }
 
-.raw-data {
+.raw-data-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin-top: 16px;
+}
+
+.raw-data {
+  width: auto;
 }
 
 .raw-data summary {
   cursor: pointer;
   color: #a0aec0;
   font-size: 12px;
-  padding: 8px 0;
-  border-bottom: 1px solid #4a5568;
+  padding: 8px 12px;
+  border: 1px solid #4a5568;
+  border-radius: 6px;
+  background: rgba(74, 85, 104, 0.3);
+  transition: all 0.2s;
+  display: inline-block;
+}
+
+.raw-data summary:hover {
+  background: rgba(74, 85, 104, 0.5);
+  border-color: #718096;
+}
+
+.raw-copy {
+  background: rgba(66, 153, 225, 0.2);
+  border: 1px solid rgba(66, 153, 225, 0.3);
+  border-radius: 6px;
+  color: #a0aec0;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 26px;
+  flex-shrink: 0;
+}
+
+.raw-copy:hover {
+  background: rgba(66, 153, 225, 0.3);
+  border-color: rgba(66, 153, 225, 0.4);
+  color: #e2e8f0;
 }
 
 .raw-data summary:hover {
   color: #e2e8f0;
+}
+
+.raw-data pre {
+  margin-top: 12px;
 }
 
 .fallback-analysis {
@@ -234,12 +360,12 @@ const argumentData = computed<ArgumentData | null>(() => {
 .message-time {
   font-size: 10px;
   color: #a0aec0;
-  margin: 0 16px;
 }
 
 @media (max-width: 768px) {
   .message-content {
-    max-width: 85%;
+    max-width: 95%;
+    width: 95%;
   }
 }
 </style>
