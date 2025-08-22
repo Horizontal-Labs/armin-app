@@ -300,7 +300,7 @@ const createGraph = () => {
 
   // Create a map to store premise stances
   const premiseStanceMap = new Map<string, string>()
-  props.argumentData.stance_relations.forEach(relation => {
+  props.argumentData?.stance_relations.forEach(relation => {
     if (!premiseStanceMap.has(relation.premise_id)) {
       premiseStanceMap.set(relation.premise_id, relation.stance)
     }
@@ -323,7 +323,7 @@ const createGraph = () => {
   })
 
   // Add edges for stance relations
-  props.argumentData.stance_relations.forEach((relation, index) => {
+  props.argumentData?.stance_relations.forEach((relation, index) => {
     if (nodeIds.has(relation.claim_id) && nodeIds.has(relation.premise_id)) {
       elements.push({
         data: {
@@ -357,7 +357,7 @@ const createGraph = () => {
                        'text-wrap': 'wrap',
                        'text-max-width': '280px',
                        'font-size': '16px',
-                       'font-weight': '600',
+                       'font-weight': 600,
                        'text-valign': 'center',
                        'text-halign': 'center',
                        'width': '300px',
@@ -377,7 +377,7 @@ const createGraph = () => {
                        'text-wrap': 'wrap',
                        'text-max-width': '280px',
                        'font-size': '16px',
-                       'font-weight': '600',
+                       'font-weight': 600,
                        'text-valign': 'center',
                        'text-halign': 'center',
                        'width': '300px',
@@ -397,7 +397,7 @@ const createGraph = () => {
                        'text-wrap': 'wrap',
                        'text-max-width': '280px',
                        'font-size': '16px',
-                       'font-weight': '600',
+                       'font-weight': 600,
                        'text-valign': 'center',
                        'text-halign': 'center',
                        'width': '300px',
@@ -417,7 +417,7 @@ const createGraph = () => {
                        'text-wrap': 'wrap',
                        'text-max-width': '280px',
                        'font-size': '16px',
-                       'font-weight': '600',
+                       'font-weight': 600,
                        'text-valign': 'center',
                        'text-halign': 'center',
                        'width': '300px',
@@ -435,11 +435,10 @@ const createGraph = () => {
                        'line-color': '#48bb78',
                        'target-arrow-color': '#48bb78',
                        'target-arrow-shape': 'triangle',
-                       'target-arrow-width': 10,
                        'curve-style': 'bezier',
                        'label': '✓ SUPPORTS',
                        'font-size': '16px',
-                       'font-weight': '600',
+                       'font-weight': 600,
                        'color': '#48bb78',
                        'text-outline-color': '#1a202c',
                        'text-outline-width': 3,
@@ -459,11 +458,10 @@ const createGraph = () => {
                        'line-color': '#f56565',
                        'target-arrow-color': '#f56565',
                        'target-arrow-shape': 'triangle',
-                       'target-arrow-width': 10,
                        'curve-style': 'bezier',
                        'label': '✗ OPPOSES',
                        'font-size': '16px',
-                       'font-weight': '600',
+                       'font-weight': 600,
                        'color': '#f56565',
                        'text-outline-color': '#1a202c',
                        'text-outline-width': 3,
@@ -486,7 +484,7 @@ const createGraph = () => {
                        'curve-style': 'bezier',
                        'label': '? UNCLEAR',
                        'font-size': '14px',
-                       'font-weight': '600',
+                       'font-weight': 600,
                        'color': '#a0aec0'
                      }
                    }
@@ -504,7 +502,7 @@ const createGraph = () => {
                        return { x: x, y: 0 }
                      } else {
                        // Find connected claim for this premise
-                       const relation = props.argumentData.stance_relations.find(
+                       const relation = props.argumentData?.stance_relations.find(
                          r => r.premise_id === node.id()
                        )
                        if (relation) {
@@ -512,9 +510,9 @@ const createGraph = () => {
                          const x = -totalWidth/2 + (claimIndex + 0.5) * 550  // Match increased spacing
                          
                          // Count premises for this claim to stack them with more spacing
-                         const premisesForClaim = props.argumentData.stance_relations
-                           .filter(r => r.claim_id === relation.claim_id)
-                           .map(r => r.premise_id)
+                         const premisesForClaim = props.argumentData?.stance_relations
+                           ?.filter(r => r.claim_id === relation.claim_id)
+                           ?.map(r => r.premise_id) || []
                          const premiseIndex = premisesForClaim.indexOf(node.id())
                          const y = -250 - (premiseIndex * 220)  // Increased vertical spacing
                          
