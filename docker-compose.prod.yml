@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  armin-app:
+    # Pull image from GitHub Container Registry
+    image: ghcr.io/horizontal-labs/arminapp:latest
+    container_name: armin-frontend
+    ports:
+      - '10123:80'
+    environment:
+      - NODE_ENV=production
+      - VITE_API_BASE_URL=https://armin-app.ddns.net/api
+    restart: unless-stopped
+    networks:
+      - armin-network
+    # Add health check
+    healthcheck:
+      test: ['CMD', 'wget', '--no-verbose', '--tries=1', '--spider', 'http://localhost:80/']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Watchtower - Automatically updates containers when new images are pushed
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ~/.docker/config.json:/config.json:ro # For registry authentication
+    environment:
+      - WATCHTOWER_CLEANUP=true # Remove old images after updating
+      - WATCHTOWER_INCLUDE_STOPPED=false
+      - WATCHTOWER_INCLUDE_RESTARTING=true
+      - WATCHTOWER_POLL_INTERVAL=60 # Check every 1 minute
+      - WATCHTOWER_LABEL_ENABLE=false # Update all containers (set to true to only update labeled ones)
+      - WATCHTOWER_NOTIFICATION_EMAIL_DELAY=2
+    restart: unless-stopped
+    networks:
+      - armin-network
+
+networks:
+  armin-network:
+    driver: bridge
