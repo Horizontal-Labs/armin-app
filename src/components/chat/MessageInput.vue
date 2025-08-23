@@ -163,7 +163,28 @@ const autoResize = async () => {
   }
 }
 
-const handlePaste = async () => {
+const handlePaste = async (event) => {
+  // Get the pasted text
+  const clipboardData = event.clipboardData || window.clipboardData
+  const pastedText = clipboardData.getData('text/plain')
+  
+  // If there's pasted content with line breaks, preserve them
+  if (pastedText && pastedText.includes('\n')) {
+    event.preventDefault()
+    
+    // Get current cursor position
+    const start = event.target.selectionStart
+    const end = event.target.selectionEnd
+    const currentValue = textInput.value
+    
+    // Insert pasted text at cursor position
+    textInput.value = currentValue.substring(0, start) + pastedText + currentValue.substring(end)
+    
+    // Set cursor position after pasted text
+    await nextTick()
+    event.target.setSelectionRange(start + pastedText.length, start + pastedText.length)
+  }
+  
   // Small delay to let paste content be processed
   await new Promise(resolve => setTimeout(resolve, 10))
   autoResize()
@@ -202,12 +223,35 @@ const extractTextFromPdf = async (file) => {
       const page = await pdf.getPage(pageNum)
       const textContent = await page.getTextContent()
 
-      // Combine text items from the page
-      const pageText = textContent.items
-        .map(item => item.str)
-        .join(' ')
-
-      fullText += pageText + '\n'
+      // Combine text items from the page with better formatting
+      let pageText = ''
+      let lastY = null
+      let lastX = null
+      
+      textContent.items.forEach((item, index) => {
+        // Check if this item is on a new line based on Y position
+        if (lastY !== null && Math.abs(item.transform[5] - lastY) > 2) {
+          pageText += '\n'
+        } else if (lastX !== null && item.transform[4] - lastX > 10) {
+          // Add space for items far apart horizontally
+          pageText += ' '
+        }
+        
+        pageText += item.str
+        
+        lastY = item.transform[5]
+        lastX = item.transform[4] + (item.width || 0)
+      })
+      
+      // Clean up formatting
+      pageText = pageText
+        .replace(/  +/g, ' ') // Remove multiple spaces
+        .replace(/\n\s*\n\s*\n+/g, '\n\n') // Max 2 line breaks
+        .trim()
+      
+      if (pageText) {
+        fullText += pageText + '\n\n' // Add double line break between pages
+      }
     }
 
     return fullText.trim()
@@ -245,13 +289,13 @@ const handleFileUpload = async (event) => {
         return
       }
 
-      // Set the extracted text to the textarea
+      // Set the extracted text to the textarea (preserving formatting)
       textInput.value = extractedText
 
       // Store the file reference for display
       selectedFile.value = file
 
-      // Auto-resize the textarea
+      // Auto-resize the textarea to fit content
       await nextTick()
       autoResize()
 
@@ -270,6 +314,9 @@ const clearSelectedFile = () => {
   if (fileInput.value) {
     fileInput.value.value = ''
   }
+  // Clear the message content when PDF is removed
+  textInput.value = ''
+  resetTextarea()
 }
 
 const resetTextarea = () => {
@@ -411,9 +458,11 @@ onMounted(() => {
   overflow-y: hidden;
   min-height: 48px;
   max-height: 256px;
-  line-height: 1.4;
+  line-height: 1.5;
   transition: height 0.15s ease;
   box-sizing: border-box;
+  white-space: pre-wrap;
+  word-wrap: break-word;
 }
 
 .text-input:focus {
