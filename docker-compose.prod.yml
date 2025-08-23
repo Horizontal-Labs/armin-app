@@ -3,7 +3,7 @@ version: '3.8'
 services:
   armin-app:
     # Pull image from GitHub Container Registry
-    image: ghcr.io/horizontal-labs/arminapp:latest
+    image: ghcr.io/horizontal-labs/armin-app:latest
     container_name: armin-frontend
     ports:
       - '10123:80'
