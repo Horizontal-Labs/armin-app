@@ -65,8 +65,6 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          build-args: |
-            VITE_API_BASE_URL=https://armin-app.ddns.net/api
 
       - name: Image digest
         run: echo ${{ steps.docker_build.outputs.digest }}

@@ -10,6 +10,7 @@ services:
     environment:
       - NODE_ENV=production
       - VITE_API_BASE_URL=https://armin-app.ddns.net/api
+      # This URL will be injected at container startup, not build time
     restart: unless-stopped
     networks:
       - armin-network
