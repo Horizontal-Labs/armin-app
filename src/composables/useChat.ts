@@ -1,19 +1,32 @@
-import { ref, computed, type Ref, type ComputedRef } from 'vue'
+import { ref, computed, onMounted, type Ref, type ComputedRef } from 'vue'
 import { z } from 'zod'
 
-// Zod Schemas
+// Model type definitions
+interface ModelInfo {
+  id: string
+  name: string
+  description: string
+  provider: 'local' | 'openai'
+}
+
+interface AvailableModels {
+  adu_classification: ModelInfo[]
+  stance_classification: ModelInfo[]
+}
+
+// Zod Schemas - now accepts any string since models are dynamic
 const TextAnalysisRequestSchema = z.object({
   message: z.string().min(1, 'Message cannot be empty'),
   session_id: z.string(),
-  adu_classifier_model: z.enum(['modernbert', 'openai', 'tinyllama', 'deberta']).default('openai'),
-  stance_classifier_model: z.enum(['modernbert', 'openai', 'tinyllama', 'deberta']).default('openai'),
+  adu_classifier_model: z.string().default('gpt-4.1'),
+  stance_classifier_model: z.string().default('gpt-4.1'),
 })
 
 const FileAnalysisRequestSchema = z.object({
   file: z.instanceof(File),
   session_id: z.string(),
-  adu_classifier_model: z.enum(['modernbert', 'openai', 'tinyllama', 'deberta']).default('openai'),
-  stance_classifier_model: z.enum(['modernbert', 'openai', 'tinyllama', 'deberta']).default('openai'),
+  adu_classifier_model: z.string().default('gpt-4.1'),
+  stance_classifier_model: z.string().default('gpt-4.1'),
 })
 
 // Type definitions
@@ -73,8 +86,10 @@ const chatHistory: Ref<ChatItem[]> = ref([])
 const messages: Ref<Map<string, Message[]>> = ref(new Map())
 const isAnalyzing: Ref<boolean> = ref(false)
 const error: Ref<string> = ref('')
-const selectedAduModel: Ref<'modernbert' | 'openai' | 'tinyllama' | 'deberta'> = ref('openai')
-const selectedStanceModel: Ref<'modernbert' | 'openai' | 'tinyllama' | 'deberta'> = ref('openai')
+const selectedAduModel: Ref<string> = ref('gpt-4.1')
+const selectedStanceModel: Ref<string> = ref('gpt-4.1')
+const availableModels: Ref<AvailableModels | null> = ref(null)
+const isLoadingModels: Ref<boolean> = ref(false)
 
 const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 
@@ -85,17 +100,20 @@ export interface UseChatReturn {
   currentMessages: ComputedRef<Message[]>
   isAnalyzing: Ref<boolean>
   error: Ref<string>
-  selectedAduModel: Ref<'modernbert' | 'openai' | 'tinyllama' | 'deberta'>
-  selectedStanceModel: Ref<'modernbert' | 'openai' | 'tinyllama' | 'deberta'>
+  selectedAduModel: Ref<string>
+  selectedStanceModel: Ref<string>
+  availableModels: Ref<AvailableModels | null>
+  isLoadingModels: Ref<boolean>
 
   // Methods
   startNewChat: () => string
   deleteChat: (chatId: string) => void
   selectChat: (chatId: string) => void
   sendMessage: (messageData: MessageData) => Promise<void>
-  setAduModel: (model: 'modernbert' | 'openai' | 'tinyllama' | 'deberta') => void
-  setStanceModel: (model: 'modernbert' | 'openai' | 'tinyllama' | 'deberta') => void
+  setAduModel: (model: string) => void
+  setStanceModel: (model: string) => void
   loadData: () => void
+  fetchAvailableModels: () => Promise<void>
   formatDate: (date: string | number | Date) => string
   formatTime: (date: string | number | Date) => string
 }
@@ -325,15 +343,70 @@ export function useChat(): UseChatReturn {
     }
   }
 
-  const setAduModel = (model: 'modernbert' | 'openai' | 'tinyllama' | 'deberta'): void => {
+  const setAduModel = (model: string): void => {
     selectedAduModel.value = model
   }
 
-  const setStanceModel = (model: 'modernbert' | 'openai' | 'tinyllama' | 'deberta'): void => {
+  const setStanceModel = (model: string): void => {
     selectedStanceModel.value = model
   }
 
+  const fetchAvailableModels = async (): Promise<void> => {
+    try {
+      isLoadingModels.value = true
+      const response = await fetch(`${API_BASE_URL}/models/available`)
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch available models')
+      }
+      
+      const data = await response.json()
+      availableModels.value = data
+      
+      // Set default models if current selection is not available
+      if (data.adu_classification.length > 0 && !data.adu_classification.find((m: ModelInfo) => m.id === selectedAduModel.value)) {
+        // Try to find gpt-4.1 first, otherwise use the first available model
+        const defaultModel = data.adu_classification.find((m: ModelInfo) => m.id === 'gpt-4.1') || data.adu_classification[0]
+        selectedAduModel.value = defaultModel.id
+      }
+      
+      if (data.stance_classification.length > 0 && !data.stance_classification.find((m: ModelInfo) => m.id === selectedStanceModel.value)) {
+        // Try to find gpt-4.1 first, otherwise use the first available model
+        const defaultModel = data.stance_classification.find((m: ModelInfo) => m.id === 'gpt-4.1') || data.stance_classification[0]
+        selectedStanceModel.value = defaultModel.id
+      }
+    } catch (err) {
+      console.error('Error fetching available models:', err)
+      error.value = 'Failed to load available models. Using defaults.'
+      
+      // Fallback to hardcoded models if API fails
+      availableModels.value = {
+        adu_classification: [
+          { id: 'gpt-4.1', name: 'GPT-4.1', description: 'OpenAI GPT-4.1', provider: 'openai' },
+          { id: 'gpt-5', name: 'GPT-5', description: 'OpenAI GPT-5', provider: 'openai' },
+          { id: 'gpt-5-mini', name: 'GPT-5 Mini', description: 'OpenAI GPT-5 Mini', provider: 'openai' },
+          { id: 'modernbert', name: 'ModernBERT', description: 'Local BERT model', provider: 'local' },
+          { id: 'tinyllama', name: 'TinyLlama', description: 'Lightweight LLM', provider: 'local' },
+          { id: 'deberta', name: 'DeBERTa', description: 'Decoding-enhanced BERT', provider: 'local' }
+        ],
+        stance_classification: [
+          { id: 'gpt-4.1', name: 'GPT-4.1', description: 'OpenAI GPT-4.1', provider: 'openai' },
+          { id: 'gpt-5', name: 'GPT-5', description: 'OpenAI GPT-5', provider: 'openai' },
+          { id: 'gpt-5-mini', name: 'GPT-5 Mini', description: 'OpenAI GPT-5 Mini', provider: 'openai' },
+          { id: 'modernbert', name: 'ModernBERT', description: 'Local BERT model', provider: 'local' },
+          { id: 'tinyllama', name: 'TinyLlama', description: 'Lightweight LLM', provider: 'local' },
+          { id: 'deberta', name: 'DeBERTa', description: 'Decoding-enhanced BERT', provider: 'local' }
+        ]
+      }
+    } finally {
+      isLoadingModels.value = false
+    }
+  }
+
   const loadData = (): void => {
+    // Fetch available models when loading data
+    fetchAvailableModels()
+    
     try {
       // Load chat history
       const savedHistory = localStorage.getItem('armins-chat-history')
@@ -367,6 +440,8 @@ export function useChat(): UseChatReturn {
     error,
     selectedAduModel,
     selectedStanceModel,
+    availableModels,
+    isLoadingModels,
 
     // Methods
     startNewChat,
@@ -376,6 +451,7 @@ export function useChat(): UseChatReturn {
     setAduModel,
     setStanceModel,
     loadData,
+    fetchAvailableModels,
     formatDate,
     formatTime,
   }

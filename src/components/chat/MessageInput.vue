@@ -60,12 +60,31 @@
           id="adu-select"
           v-model="selectedAduModel"
           class="model-dropdown"
-          :disabled="isAnalyzing"
+          :disabled="isAnalyzing || isLoadingModels"
+          :title="getModelDescription('adu', selectedAduModel)"
+          @change="setAduModel($event.target.value)"
         >
-          <option value="openai">OpenAI</option>
-          <option value="modernbert">ModernBERT</option>
-          <option value="tinyllama">TinyLlama</option>
-          <option value="deberta">DeBERTa</option>
+          <option v-if="isLoadingModels" disabled>Loading models...</option>
+          <template v-else-if="availableModels?.adu_classification">
+            <optgroup v-for="provider in groupedAduModels" :key="provider.name" :label="provider.name">
+              <option 
+                v-for="model in provider.models" 
+                :key="model.id" 
+                :value="model.id"
+                :title="model.description"
+              >
+                {{ model.name }}
+              </option>
+            </optgroup>
+          </template>
+          <template v-else>
+            <option value="gpt-4.1">GPT-4.1</option>
+            <option value="gpt-5">GPT-5</option>
+            <option value="gpt-5-mini">GPT-5 Mini</option>
+            <option value="modernbert">ModernBERT</option>
+            <option value="tinyllama">TinyLlama</option>
+            <option value="deberta">DeBERTa</option>
+          </template>
         </select>
       </div>
       
@@ -75,12 +94,31 @@
           id="stance-select"
           v-model="selectedStanceModel"
           class="model-dropdown"
-          :disabled="isAnalyzing"
+          :disabled="isAnalyzing || isLoadingModels"
+          :title="getModelDescription('stance', selectedStanceModel)"
+          @change="setStanceModel($event.target.value)"
         >
-          <option value="openai">OpenAI</option>
-          <option value="modernbert">ModernBERT</option>
-          <option value="tinyllama">TinyLlama</option>
-          <option value="deberta">DeBERTa</option>
+          <option v-if="isLoadingModels" disabled>Loading models...</option>
+          <template v-else-if="availableModels?.stance_classification">
+            <optgroup v-for="provider in groupedStanceModels" :key="provider.name" :label="provider.name">
+              <option 
+                v-for="model in provider.models" 
+                :key="model.id" 
+                :value="model.id"
+                :title="model.description"
+              >
+                {{ model.name }}
+              </option>
+            </optgroup>
+          </template>
+          <template v-else>
+            <option value="gpt-4.1">GPT-4.1</option>
+            <option value="gpt-5">GPT-5</option>
+            <option value="gpt-5-mini">GPT-5 Mini</option>
+            <option value="modernbert">ModernBERT</option>
+            <option value="tinyllama">TinyLlama</option>
+            <option value="deberta">DeBERTa</option>
+          </template>
         </select>
       </div>
     </div>
@@ -99,7 +137,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useChat } from '@/composables/useChat'
 import * as pdfjsLib from 'pdfjs-dist'
 import workerSrc from 'pdfjs-dist/build/pdf.worker.mjs?url'
@@ -117,11 +155,69 @@ const isExtractingPdf = ref(false)
 const MIN_HEIGHT = 48
 const MAX_HEIGHT = 256
 
-const { isAnalyzing, error, sendMessage, selectedAduModel, selectedStanceModel, setAduModel, setStanceModel } = useChat()
+const { 
+  isAnalyzing, 
+  error, 
+  sendMessage, 
+  selectedAduModel, 
+  selectedStanceModel, 
+  setAduModel, 
+  setStanceModel,
+  availableModels,
+  isLoadingModels,
+  fetchAvailableModels
+} = useChat()
 
 const canSend = computed(() => {
   return textInput.value.trim() || selectedFile.value
 })
+
+// Group models by provider
+const groupedAduModels = computed(() => {
+  if (!availableModels.value?.adu_classification) return []
+  
+  const openaiModels = availableModels.value.adu_classification.filter(m => m.provider === 'openai')
+  const localModels = availableModels.value.adu_classification.filter(m => m.provider === 'local')
+  
+  const groups = []
+  if (openaiModels.length > 0) {
+    groups.push({ name: 'OpenAI Models', models: openaiModels })
+  }
+  if (localModels.length > 0) {
+    groups.push({ name: 'Local Models', models: localModels })
+  }
+  
+  return groups
+})
+
+const groupedStanceModels = computed(() => {
+  if (!availableModels.value?.stance_classification) return []
+  
+  const openaiModels = availableModels.value.stance_classification.filter(m => m.provider === 'openai')
+  const localModels = availableModels.value.stance_classification.filter(m => m.provider === 'local')
+  
+  const groups = []
+  if (openaiModels.length > 0) {
+    groups.push({ name: 'OpenAI Models', models: openaiModels })
+  }
+  if (localModels.length > 0) {
+    groups.push({ name: 'Local Models', models: localModels })
+  }
+  
+  return groups
+})
+
+// Get model description for tooltip
+const getModelDescription = (type, modelId) => {
+  if (!availableModels.value || !modelId) return ''
+  
+  const models = type === 'adu' 
+    ? availableModels.value.adu_classification 
+    : availableModels.value.stance_classification
+    
+  const model = models?.find(m => m.id === modelId)
+  return model?.description || ''
+}
 
 const autoResize = async () => {
   await nextTick()
@@ -405,7 +501,24 @@ onMounted(() => {
   padding: 6px 8px;
   font-size: 14px;
   cursor: pointer;
-  min-width: 120px;
+  min-width: 150px;
+}
+
+.model-dropdown optgroup {
+  background: #1a202c;
+  color: #a0aec0;
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.model-dropdown option {
+  background: #2d3748;
+  color: #ffffff;
+  padding: 4px 8px;
+}
+
+.model-dropdown option:hover {
+  background: #4a5568;
 }
 
 .model-dropdown:focus {
