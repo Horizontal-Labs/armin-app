@@ -355,14 +355,19 @@ onMounted(() => {
 
 <style scoped>
 .input-area {
-  padding: 20px;
+  padding: 24px 20px;
   margin-left: 25%;
   margin-right: 25%;
-  border-radius: 8px;
-  background: #2d3748;
-  /* border-top: 1px solid #4a5568; */
-  /* background: #2d3748; */
-  margin-bottom: 16px;
+  border-radius: 12px 12px 0 0;
+  background: linear-gradient(to bottom, #374151, #2d3748);
+  backdrop-filter: blur(10px);
+  border-top: 1px solid rgba(74, 85, 104, 0.5);
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.3), 
+              0 -2px 10px rgba(0, 0, 0, 0.2);
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  margin-top: 20px;
 }
 
 .model-selection {
@@ -370,11 +375,13 @@ onMounted(() => {
   align-items: center;
   gap: 20px;
   margin-top: 12px;
-  padding: 8px 12px;
-  background: #4a5568;
-  border-radius: 6px;
-  border: 1px solid #718096;
+  padding: 10px 14px;
+  background: rgba(45, 55, 72, 0.6);
+  backdrop-filter: blur(5px);
+  border-radius: 8px;
+  border: 1px solid rgba(113, 128, 150, 0.3);
   flex-wrap: wrap;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .model-group {
@@ -421,19 +428,23 @@ onMounted(() => {
 
 .file-upload-button {
   padding: 12px;
-  background: #4a5568;
+  background: #2d3748;
   color: #e2e8f0;
-  border: none;
-  border-radius: 8px;
+  border: 2px solid #4a5568;
+  border-radius: 10px;
   cursor: pointer;
   font-size: 16px;
-  transition: background 0.2s;
+  transition: all 0.2s;
   flex-shrink: 0;
-  height: 48px;
+  height: 52px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .file-upload-button:hover:not(:disabled) {
-  background: #718096;
+  background: #374151;
+  border-color: #718096;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
 }
 
 .file-upload-button:disabled {
@@ -447,28 +458,32 @@ onMounted(() => {
 
 .text-input {
   width: 100%;
-  padding: 12px;
-  background: #4a5568;
-  border: 1px solid #718096;
-  border-radius: 8px;
+  padding: 14px 16px;
+  background: #1a202c;
+  border: 2px solid #4a5568;
+  border-radius: 10px;
   color: #ffffff;
-  font-size: 14px;
+  font-size: 15px;
   font-family: inherit;
   resize: none;
   overflow-y: hidden;
   min-height: 48px;
   max-height: 256px;
   line-height: 1.5;
-  transition: height 0.15s ease;
+  transition: all 0.2s ease;
   box-sizing: border-box;
   white-space: pre-wrap;
   word-wrap: break-word;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .text-input:focus {
   outline: none;
   border-color: #4299e1;
-  box-shadow: 0 0 0 1px #4299e1;
+  background: #1e2633;
+  box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.15),
+              inset 0 2px 4px rgba(0, 0, 0, 0.1);
+  transform: translateY(-1px);
 }
 
 .text-input::placeholder {
@@ -493,20 +508,24 @@ onMounted(() => {
 }
 
 .send-button {
-  padding: 12px;
-  background: #4299e1;
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #4299e1, #3182ce);
   color: white;
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   cursor: pointer;
   font-size: 16px;
-  transition: background 0.2s;
+  font-weight: 500;
+  transition: all 0.2s;
   flex-shrink: 0;
-  height: 48px;
+  height: 52px;
+  box-shadow: 0 2px 8px rgba(66, 153, 225, 0.3);
 }
 
 .send-button:hover:not(:disabled) {
-  background: #3182ce;
+  background: linear-gradient(135deg, #3182ce, #2c5aa0);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(66, 153, 225, 0.4);
 }
 
 .send-button:disabled {

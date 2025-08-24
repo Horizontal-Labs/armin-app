@@ -36,9 +36,11 @@ watch(currentMessages, scrollToBottom, { deep: true })
   flex: 1;
   overflow-y: auto;
   padding: 20px;
+  padding-bottom: 10px;
   display: flex;
   flex-direction: column;
   gap: 16px;
+  scroll-behavior: smooth;
 }
 
 .empty-chat {

@@ -35,5 +35,7 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   max-height: 100vh;
+  position: relative;
+  overflow: hidden;
 }
 </style>
