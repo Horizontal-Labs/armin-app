@@ -14,7 +14,9 @@ services:
     restart: unless-stopped
     networks:
       - armin-network
-    # Add health check
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
+      com.centurylinklabs.watchtower.scope: "armin-frontend"
     healthcheck:
       test: ['CMD', 'wget', '--no-verbose', '--tries=1', '--spider', 'http://localhost:80/']
       interval: 30s
@@ -23,19 +25,24 @@ services:
       start_period: 10s
 
   # Watchtower - Automatically updates containers when new images are pushed
-  watchtower:
+  watchtower-armin-frontend:
     image: containrrr/watchtower:latest
-    container_name: watchtower
+    container_name: watchtower-armin-frontend
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ~/.docker/config.json:/config.json:ro # For registry authentication
     environment:
-      - WATCHTOWER_CLEANUP=true # Remove old images after updating
+      - WATCHTOWER_CLEANUP=false # Remove old images after updating
       - WATCHTOWER_INCLUDE_STOPPED=false
       - WATCHTOWER_INCLUDE_RESTARTING=true
       - WATCHTOWER_POLL_INTERVAL=60 # Check every 1 minute
-      - WATCHTOWER_LABEL_ENABLE=false # Update all containers (set to true to only update labeled ones)
-      - WATCHTOWER_NOTIFICATION_EMAIL_DELAY=2
+      - WATCHTOWER_LABEL_ENABLE=true # Update all containers (set to true to only update labeled ones)
+      - WATCHTOWER_SCOPE="armin-frontend"
+      - DOCKER_CONFIG=/
+    labels:
+      # Prevent other Watchtowers from managing this Watchtower
+      com.centurylinklabs.watchtower.enable: "false"
+      com.centurylinklabs.watchtower.scope: "armin-frontend"
     restart: unless-stopped
     networks:
       - armin-network

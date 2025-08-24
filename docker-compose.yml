@@ -10,6 +10,7 @@ services:
       - "10123:80"
     environment:
       - NODE_ENV=production
+      - VITE_API_BASE_URL=https://armin-app.ddns.net/api/
     restart: unless-stopped
     networks:
       - armin-network
