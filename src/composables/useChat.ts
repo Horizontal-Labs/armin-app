@@ -7,6 +7,8 @@ interface ModelInfo {
   name: string
   description: string
   provider: 'local' | 'openai'
+  supports_few_shot?: boolean
+  disabled?: boolean
 }
 
 interface AvailableModels {
@@ -20,6 +22,9 @@ const TextAnalysisRequestSchema = z.object({
   session_id: z.string(),
   adu_classifier_model: z.string().default('gpt-4.1'),
   stance_classifier_model: z.string().default('gpt-4.1'),
+  use_few_shot_adu: z.boolean().default(false),
+  use_few_shot_stance: z.boolean().default(false),
+  use_few_shot: z.boolean().optional(),
 })
 
 const FileAnalysisRequestSchema = z.object({
@@ -90,6 +95,9 @@ const selectedAduModel: Ref<string> = ref('gpt-4.1')
 const selectedStanceModel: Ref<string> = ref('gpt-4.1')
 const availableModels: Ref<AvailableModels | null> = ref(null)
 const isLoadingModels: Ref<boolean> = ref(false)
+const useFewShot: Ref<boolean> = ref(false) // legacy combined flag (not used by UI)
+const useFewShotAdu: Ref<boolean> = ref(false)
+const useFewShotStance: Ref<boolean> = ref(false)
 
 const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 
@@ -146,6 +154,13 @@ export interface UseChatReturn {
   selectedStanceModel: Ref<string>
   availableModels: Ref<AvailableModels | null>
   isLoadingModels: Ref<boolean>
+  useFewShot: Ref<boolean>
+  useFewShotAdu: Ref<boolean>
+  useFewShotStance: Ref<boolean>
+
+  // Few-shot support
+  canUseFewShotAdu: ComputedRef<boolean>
+  canUseFewShotStance: ComputedRef<boolean>
 
   // Methods
   startNewChat: () => string
@@ -154,6 +169,9 @@ export interface UseChatReturn {
   sendMessage: (messageData: MessageData) => Promise<void>
   setAduModel: (model: string) => void
   setStanceModel: (model: string) => void
+  setUseFewShot: (val: boolean) => void
+  setUseFewShotAdu: (val: boolean) => void
+  setUseFewShotStance: (val: boolean) => void
   loadData: () => void
   fetchAvailableModels: () => Promise<void>
   formatDate: (date: string | number | Date) => string
@@ -164,6 +182,18 @@ export function useChat(): UseChatReturn {
   // Computed
   const currentMessages: ComputedRef<Message[]> = computed(() => {
     return currentChatId.value ? messages.value.get(currentChatId.value) || [] : []
+  })
+
+  const canUseFewShotAdu: ComputedRef<boolean> = computed(() => {
+    const models = availableModels.value?.adu_classification || []
+    const model = models.find(m => m.id === selectedAduModel.value)
+    return !!model?.supports_few_shot
+  })
+
+  const canUseFewShotStance: ComputedRef<boolean> = computed(() => {
+    const models = availableModels.value?.stance_classification || []
+    const model = models.find(m => m.id === selectedStanceModel.value)
+    return !!model?.supports_few_shot
   })
 
   // Utility functions
@@ -310,12 +340,18 @@ export function useChat(): UseChatReturn {
         throw new Error('File analysis is not supported by the current backend')
       } else {
         // Text analysis
-        const requestData = TextAnalysisRequestSchema.parse({
+        const rawRequest = {
           message: text!.trim(),
           session_id: chatId,
           adu_classifier_model: selectedAduModel.value,
           stance_classifier_model: selectedStanceModel.value,
-        })
+          use_few_shot_adu: useFewShotAdu.value,
+          use_few_shot_stance: useFewShotStance.value,
+          // include legacy flag only when both are enabled, otherwise omit
+          ...(useFewShotAdu.value && useFewShotStance.value ? { use_few_shot: true } : {}),
+        }
+
+        const requestData = TextAnalysisRequestSchema.parse(rawRequest)
 
         console.log('Sending request to:', `${API_BASE_URL}/chat/send`)
         console.log('Request data:', requestData)
@@ -380,11 +416,33 @@ export function useChat(): UseChatReturn {
   }
 
   const setAduModel = (model: string): void => {
-    selectedAduModel.value = model
+    // Prevent selecting disabled models defensively
+    const models = availableModels.value?.adu_classification || []
+    const found = models.find(m => m.id === model)
+    if (found && !found.disabled) {
+      selectedAduModel.value = model
+    }
   }
 
   const setStanceModel = (model: string): void => {
-    selectedStanceModel.value = model
+    // Prevent selecting disabled models defensively
+    const models = availableModels.value?.stance_classification || []
+    const found = models.find(m => m.id === model)
+    if (found && !found.disabled) {
+      selectedStanceModel.value = model
+    }
+  }
+
+  const setUseFewShot = (val: boolean): void => {
+    useFewShot.value = !!val
+  }
+
+  const setUseFewShotAdu = (val: boolean): void => {
+    useFewShotAdu.value = !!val
+  }
+
+  const setUseFewShotStance = (val: boolean): void => {
+    useFewShotStance.value = !!val
   }
 
   const fetchAvailableModels = async (): Promise<void> => {
@@ -399,17 +457,27 @@ export function useChat(): UseChatReturn {
       const data = await response.json()
       availableModels.value = data
       
-      // Set default models if current selection is not available
-      if (data.adu_classification.length > 0 && !data.adu_classification.find((m: ModelInfo) => m.id === selectedAduModel.value)) {
-        // Try to find gpt-4.1 first, otherwise use the first available model
-        const defaultModel = data.adu_classification.find((m: ModelInfo) => m.id === 'gpt-4.1') || data.adu_classification[0]
-        selectedAduModel.value = defaultModel.id
+      // Ensure selections are valid and enabled; choose enabled defaults when needed
+      const pickEnabledDefault = (models: ModelInfo[]): ModelInfo | undefined => {
+        const enabled = models.filter(m => !m.disabled)
+        if (enabled.length === 0) return undefined
+        return enabled.find(m => m.id === 'gpt-4.1') || enabled[0]
       }
-      
-      if (data.stance_classification.length > 0 && !data.stance_classification.find((m: ModelInfo) => m.id === selectedStanceModel.value)) {
-        // Try to find gpt-4.1 first, otherwise use the first available model
-        const defaultModel = data.stance_classification.find((m: ModelInfo) => m.id === 'gpt-4.1') || data.stance_classification[0]
-        selectedStanceModel.value = defaultModel.id
+
+      if (data.adu_classification.length > 0) {
+        const currentAdu = data.adu_classification.find((m: ModelInfo) => m.id === selectedAduModel.value)
+        if (!currentAdu || currentAdu.disabled) {
+          const defaultModel = pickEnabledDefault(data.adu_classification)
+          if (defaultModel) selectedAduModel.value = defaultModel.id
+        }
+      }
+
+      if (data.stance_classification.length > 0) {
+        const currentStance = data.stance_classification.find((m: ModelInfo) => m.id === selectedStanceModel.value)
+        if (!currentStance || currentStance.disabled) {
+          const defaultModel = pickEnabledDefault(data.stance_classification)
+          if (defaultModel) selectedStanceModel.value = defaultModel.id
+        }
       }
     } catch (err) {
       console.error('Error fetching available models:', err)
@@ -480,6 +548,11 @@ export function useChat(): UseChatReturn {
     selectedStanceModel,
     availableModels,
     isLoadingModels,
+    useFewShot,
+    useFewShotAdu,
+    useFewShotStance,
+    canUseFewShotAdu,
+    canUseFewShotStance,
 
     // Methods
     startNewChat,
@@ -488,6 +561,9 @@ export function useChat(): UseChatReturn {
     sendMessage,
     setAduModel,
     setStanceModel,
+    setUseFewShot,
+    setUseFewShotAdu,
+    setUseFewShotStance,
     loadData,
     fetchAvailableModels,
     formatDate,

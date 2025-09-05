@@ -53,17 +53,17 @@
     </div>
 
     <!-- Model Selection Dropdowns -->
-    <div class="model-selection">
-      <div class="model-group">
-        <label for="adu-select" class="model-label">ADU Classifier:</label>
-        <select
-          id="adu-select"
-          v-model="selectedAduModel"
-          class="model-dropdown"
-          :disabled="isAnalyzing || isLoadingModels"
-          :title="getModelDescription('adu', selectedAduModel)"
-          @change="setAduModel($event.target.value)"
-        >
+  <div class="model-selection">
+    <div class="model-group">
+      <label for="adu-select" class="model-label">ADU Classifier:</label>
+      <select
+        id="adu-select"
+        v-model="selectedAduModel"
+        class="model-dropdown"
+        :disabled="isAnalyzing || isLoadingModels"
+        :title="getModelDescription('adu', selectedAduModel)"
+        @change="setAduModel($event.target.value)"
+      >
           <option v-if="isLoadingModels" disabled>Loading models...</option>
           <template v-else-if="availableModels?.adu_classification">
             <optgroup v-for="provider in groupedAduModels" :key="provider.name" :label="provider.name">
@@ -72,6 +72,7 @@
                 :key="model.id" 
                 :value="model.id"
                 :title="model.description"
+                :disabled="!!model.disabled"
               >
                 {{ model.name }}
               </option>
@@ -86,18 +87,27 @@
             <option value="deberta">DeBERTa</option>
           </template>
         </select>
-      </div>
-      
-      <div class="model-group">
-        <label for="stance-select" class="model-label">Stance Classifier:</label>
-        <select
-          id="stance-select"
-          v-model="selectedStanceModel"
-          class="model-dropdown"
-          :disabled="isAnalyzing || isLoadingModels"
-          :title="getModelDescription('stance', selectedStanceModel)"
-          @change="setStanceModel($event.target.value)"
-        >
+        <label v-if="canUseFewShotAdu" class="fewshot-toggle" :title="fewShotTooltip">
+          <input
+            type="checkbox"
+            :checked="useFewShotAdu"
+            :disabled="isAnalyzing || isLoadingModels"
+            @change="setUseFewShotAdu($event.target.checked)"
+          />
+          Few-shot
+        </label>
+    </div>
+    
+    <div class="model-group">
+      <label for="stance-select" class="model-label">Stance Classifier:</label>
+      <select
+        id="stance-select"
+        v-model="selectedStanceModel"
+        class="model-dropdown"
+        :disabled="isAnalyzing || isLoadingModels"
+        :title="getModelDescription('stance', selectedStanceModel)"
+        @change="setStanceModel($event.target.value)"
+      >
           <option v-if="isLoadingModels" disabled>Loading models...</option>
           <template v-else-if="availableModels?.stance_classification">
             <optgroup v-for="provider in groupedStanceModels" :key="provider.name" :label="provider.name">
@@ -106,6 +116,7 @@
                 :key="model.id" 
                 :value="model.id"
                 :title="model.description"
+                :disabled="!!model.disabled"
               >
                 {{ model.name }}
               </option>
@@ -120,8 +131,17 @@
             <option value="deberta">DeBERTa</option>
           </template>
         </select>
-      </div>
+        <label v-if="canUseFewShotStance" class="fewshot-toggle" :title="fewShotTooltip">
+          <input
+            type="checkbox"
+            :checked="useFewShotStance"
+            :disabled="isAnalyzing || isLoadingModels"
+            @change="setUseFewShotStance($event.target.checked)"
+          />
+          Few-shot
+        </label>
     </div>
+  </div>
 
     <div v-if="error" class="error-message">
         <span class="error-text">{{ error }}</span>
@@ -165,7 +185,13 @@ const {
   setStanceModel,
   availableModels,
   isLoadingModels,
-  fetchAvailableModels
+  fetchAvailableModels,
+  useFewShotAdu,
+  useFewShotStance,
+  setUseFewShotAdu,
+  setUseFewShotStance,
+  canUseFewShotAdu,
+  canUseFewShotStance
 } = useChat()
 
 const canSend = computed(() => {
@@ -218,6 +244,8 @@ const getModelDescription = (type, modelId) => {
   const model = models?.find(m => m.id === modelId)
   return model?.description || ''
 }
+
+const fewShotTooltip = 'Include small example prompts when supported.'
 
 const autoResize = async () => {
   await nextTick()
@@ -515,6 +543,11 @@ onMounted(() => {
   background: #2d3748;
   color: #ffffff;
   padding: 4px 8px;
+}
+
+.model-dropdown option:disabled {
+  color: #a0aec0;
+  opacity: 0.6;
 }
 
 .model-dropdown option:hover {
