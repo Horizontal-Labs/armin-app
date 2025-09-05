@@ -93,6 +93,48 @@ const isLoadingModels: Ref<boolean> = ref(false)
 
 const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 
+// Error handling helpers
+const NETWORK_ERROR_REGEX = /NetworkError|Failed to fetch|Load failed|ECONNREFUSED|ERR_NETWORK|Network request failed/i
+
+const isLikelyNetworkError = (err: unknown): boolean => {
+  try {
+    // If the browser reports offline, treat as network error immediately
+    if (typeof navigator !== 'undefined' && navigator && 'onLine' in navigator && navigator.onLine === false) {
+      return true
+    }
+  } catch (_) {
+    // no-op
+  }
+
+  const message = (err as any)?.message ?? ''
+  if (typeof message === 'string' && NETWORK_ERROR_REGEX.test(message)) return true
+
+  // Fetch network failures often bubble as TypeError without status
+  return err instanceof TypeError
+}
+
+const mapStatusToMessage = (status: number, statusText = ''): string => {
+  if (status >= 500) return 'Service is temporarily unavailable. Please try again soon.'
+  if (status === 429) return 'Too many requests. Please wait and retry.'
+  if (status === 404) return 'Service endpoint not found.'
+  if (status === 401 || status === 403) return 'You are not authorized to perform this action.'
+  if (status >= 400) return 'Request failed. Please check your input and try again.'
+  return statusText || 'Request failed.'
+}
+
+const toFriendlyError = (err: unknown): string => {
+  if (isLikelyNetworkError(err)) {
+    return 'Service is unavailable. Please check your connection and try again.'
+  }
+  if (err instanceof z.ZodError) {
+    return `Validation error: ${err.errors[0]?.message ?? 'Invalid input'}`
+  }
+  if (err instanceof Error) {
+    return err.message || 'Something went wrong'
+  }
+  return 'Something went wrong'
+}
+
 export interface UseChatReturn {
   // State
   currentChatId: Ref<string | null>
@@ -291,7 +333,7 @@ export function useChat(): UseChatReturn {
       }
 
       if (!response.ok) {
-        throw new Error(`Analysis failed: ${response.statusText}`)
+        throw new Error(mapStatusToMessage(response.status, response.statusText))
       }
 
       const result: unknown = await response.json()
@@ -304,14 +346,8 @@ export function useChat(): UseChatReturn {
       })
 
     } catch (err) {
-
-      const friendly = 'An error has occurred, try to send a message again'
-
-      if (err instanceof z.ZodError) {
-        error.value = `Validation error: ${err.errors[0].message}`
-      } else {
-        error.value = err instanceof Error ? err.message : 'Failed to analyze'
-      }
+      const friendly = toFriendlyError(err)
+      error.value = friendly
       console.error('Analysis error:', err)
 
       if (assistantMessageId !== null) {
@@ -377,7 +413,9 @@ export function useChat(): UseChatReturn {
       }
     } catch (err) {
       console.error('Error fetching available models:', err)
-      error.value = 'Failed to load available models. Using defaults.'
+      error.value = isLikelyNetworkError(err)
+        ? 'Service is unavailable. Using default models.'
+        : 'Failed to load available models. Using defaults.'
       
       // Fallback to hardcoded models if API fails
       availableModels.value = {
