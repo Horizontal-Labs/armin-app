@@ -7,7 +7,7 @@
     />
     
     <div v-if="currentMessages.length === 0" class="empty-chat">
-      Start a conversation by typing a message or uploading a file
+      Start a conversation by typing a message or uploading a file. Share discussion content only; extra prompts or instructions will be treated as part of the debate.
     </div>
   </div>
 </template>

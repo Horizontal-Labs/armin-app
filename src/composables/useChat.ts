@@ -1,5 +1,6 @@
-import { ref, computed, onMounted, type Ref, type ComputedRef } from 'vue'
+import { ref, computed, type Ref, type ComputedRef } from 'vue'
 import { z } from 'zod'
+import { createChatHistoryStorage } from '@/services/chatHistoryStorage'
 
 // Model type definitions
 interface ModelInfo {
@@ -99,6 +100,8 @@ const useFewShot: Ref<boolean> = ref(false) // legacy combined flag (not used by
 const useFewShotAdu: Ref<boolean> = ref(false)
 const useFewShotStance: Ref<boolean> = ref(false)
 
+const chatHistoryStorage = createChatHistoryStorage()
+
 const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 
 // Error handling helpers
@@ -132,7 +135,7 @@ const mapStatusToMessage = (status: number, statusText = ''): string => {
 
 const toFriendlyError = (err: unknown): string => {
   if (isLikelyNetworkError(err)) {
-    return 'Service is unavailable. Please check your connection and try again.'
+    return 'Service is unavailable. Ensure the backend is running and reachable.'
   }
   if (err instanceof z.ZodError) {
     return `Validation error: ${err.errors[0]?.message ?? 'Invalid input'}`
@@ -163,8 +166,8 @@ export interface UseChatReturn {
   canUseFewShotStance: ComputedRef<boolean>
 
   // Methods
-  startNewChat: () => string
-  deleteChat: (chatId: string) => void
+  startNewChat: () => Promise<string>
+  deleteChat: (chatId: string) => Promise<void>
   selectChat: (chatId: string) => void
   sendMessage: (messageData: MessageData) => Promise<void>
   setAduModel: (model: string) => void
@@ -172,7 +175,7 @@ export interface UseChatReturn {
   setUseFewShot: (val: boolean) => void
   setUseFewShotAdu: (val: boolean) => void
   setUseFewShotStance: (val: boolean) => void
-  loadData: () => void
+  loadData: () => Promise<void>
   fetchAvailableModels: () => Promise<void>
   formatDate: (date: string | number | Date) => string
   formatTime: (date: string | number | Date) => string
@@ -211,7 +214,7 @@ export function useChat(): UseChatReturn {
   }
 
   // Chat management
-  const startNewChat = (): string => {
+  const startNewChat = async (): Promise<string> => {
     const chatId = generateId()
     const newChat: ChatItem = {
       id: chatId,
@@ -223,11 +226,11 @@ export function useChat(): UseChatReturn {
     messages.value.set(chatId, [])
     currentChatId.value = chatId
 
-    saveChatHistory()
+    await saveChatHistory()
     return chatId
   }
 
-  const deleteChat = (chatId: string): void => {
+  const deleteChat = async (chatId: string): Promise<void> => {
     chatHistory.value = chatHistory.value.filter(c => c.id !== chatId)
     messages.value.delete(chatId)
 
@@ -236,7 +239,12 @@ export function useChat(): UseChatReturn {
       currentChatId.value = null
     }
 
-    saveChatHistory()
+    try {
+      await chatHistoryStorage.deleteChat(chatId, chatHistory.value)
+    } catch (err) {
+      console.error('Failed to delete chat history entry:', err)
+    }
+
     saveMessages()
   }
 
@@ -244,11 +252,11 @@ export function useChat(): UseChatReturn {
     currentChatId.value = chatId
   }
 
-  const updateChatTitle = (chatId: string, title: string): void => {
+  const updateChatTitle = async (chatId: string, title: string): Promise<void> => {
     const chat = chatHistory.value.find(c => c.id === chatId)
     if (chat) {
       chat.title = title.length > 50 ? title.substring(0, 50) + '...' : title
-      saveChatHistory()
+      await saveChatHistory()
     }
   }
 
@@ -295,11 +303,16 @@ export function useChat(): UseChatReturn {
     if (!text?.trim() && !file) return
 
     // Ensure we have a current chat
-    if (!currentChatId.value) {
-      startNewChat()
+    let chatId = currentChatId.value
+    if (!chatId) {
+      chatId = await startNewChat()
     }
 
-    const chatId = currentChatId.value!
+    if (!chatId) {
+      return
+    }
+
+    const activeChatId = chatId
 
     // we'll need this ID later in the catch block
     let assistantMessageId: string | null = null
@@ -315,18 +328,18 @@ export function useChat(): UseChatReturn {
         fileInfo: file ? { name: file.name, size: file.size } : null
       }
 
-      addMessage(chatId, userMessage)
+      addMessage(activeChatId, userMessage)
 
       // Update chat title if it's the first message
-      const chatMessages = messages.value.get(chatId)
+      const chatMessages = messages.value.get(activeChatId)
       if (chatMessages && chatMessages.length === 1) {
         const title = text?.trim() || file?.name || 'File Analysis'
-        updateChatTitle(chatId, title)
+        await updateChatTitle(activeChatId, title)
       }
 
       // Add loading assistant message
       assistantMessageId = generateId()
-      addMessage(chatId, {
+      addMessage(activeChatId, {
         id: assistantMessageId,
         type: 'assistant',
         isLoading: true,
@@ -342,7 +355,7 @@ export function useChat(): UseChatReturn {
         // Text analysis
         const rawRequest = {
           message: text!.trim(),
-          session_id: chatId,
+          session_id: activeChatId,
           adu_classifier_model: selectedAduModel.value,
           stance_classifier_model: selectedStanceModel.value,
           use_few_shot_adu: useFewShotAdu.value,
@@ -369,14 +382,36 @@ export function useChat(): UseChatReturn {
       }
 
       if (!response.ok) {
-        throw new Error(mapStatusToMessage(response.status, response.statusText))
+        let message = mapStatusToMessage(response.status, response.statusText)
+        const contentType = response.headers.get('content-type') || ''
+
+        try {
+          if (contentType.includes('application/json')) {
+            const errorPayload = await response.json() as { detail?: unknown; message?: unknown }
+            const detail = typeof errorPayload?.detail === 'string' ? errorPayload.detail : undefined
+            const fallbackDetail = typeof errorPayload?.message === 'string' ? errorPayload.message : undefined
+            const combined = detail || fallbackDetail
+            if (combined && combined.trim()) {
+              message = combined.trim()
+            }
+          } else {
+            const text = await response.text()
+            if (text && text.trim()) {
+              message = text.trim()
+            }
+          }
+        } catch (parseErr) {
+          console.warn('Failed to parse error response:', parseErr)
+        }
+
+        throw new Error(message)
       }
 
       const result: unknown = await response.json()
       console.log('Response data:', result)
 
       // Update assistant message with results
-      updateMessage(chatId, assistantMessageId, {
+      updateMessage(activeChatId, assistantMessageId, {
         isLoading: false,
         analysis: result
       })
@@ -387,7 +422,7 @@ export function useChat(): UseChatReturn {
       console.error('Analysis error:', err)
 
       if (assistantMessageId !== null) {
-        updateMessage(chatId, assistantMessageId, {
+        updateMessage(activeChatId, assistantMessageId, {
           isLoading: false,
           analysis: friendly
         })
@@ -398,9 +433,9 @@ export function useChat(): UseChatReturn {
   }
 
   // Persistence
-  const saveChatHistory = (): void => {
+  const saveChatHistory = async (): Promise<void> => {
     try {
-      localStorage.setItem('armins-chat-history', JSON.stringify(chatHistory.value))
+      await chatHistoryStorage.saveChatHistory(chatHistory.value)
     } catch (err) {
       console.error('Failed to save chat history:', err)
     }
@@ -482,7 +517,7 @@ export function useChat(): UseChatReturn {
     } catch (err) {
       console.error('Error fetching available models:', err)
       error.value = isLikelyNetworkError(err)
-        ? 'Service is unavailable. Using default models.'
+        ? 'Backend unreachable. Is the backend running?'
         : 'Failed to load available models. Using defaults.'
       
       // Fallback to hardcoded models if API fails
@@ -509,17 +544,13 @@ export function useChat(): UseChatReturn {
     }
   }
 
-  const loadData = (): void => {
-    // Fetch available models when loading data
-    fetchAvailableModels()
+  const loadData = async (): Promise<void> => {
+    await fetchAvailableModels()
     
     try {
       // Load chat history
-      const savedHistory = localStorage.getItem('armins-chat-history')
-      if (savedHistory) {
-        const parsedHistory = JSON.parse(savedHistory) as ChatItem[]
-        chatHistory.value = parsedHistory
-      }
+      const savedHistory = await chatHistoryStorage.getChatHistory()
+      chatHistory.value = savedHistory
 
       // Load messages
       const savedMessages = localStorage.getItem('armins-messages')

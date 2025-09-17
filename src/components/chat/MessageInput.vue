@@ -4,7 +4,8 @@
       <input
         ref="fileInput"
         type="file"
-        accept=".pdf"
+        multiple
+        accept=".pdf,.txt,text/plain"
         @change="handleFileUpload"
         hidden
       />
@@ -13,7 +14,7 @@
         @click="triggerFileUpload"
         class="file-upload-button"
         :disabled="isAnalyzing"
-        title="Upload PDF file"
+        title="Upload PDF or TXT file"
       >
         📎
       </button>
@@ -43,19 +44,38 @@
       </button>
     </div>
 
-    <div v-if="selectedFile" class="selected-file">
-      📄 {{ selectedFile.name }}
-      <button @click="clearSelectedFile" class="clear-file">✕</button>
+    <div v-if="attachments.length > 0" class="attachments">
+      <div
+        v-for="attachment in attachments"
+        :key="attachment.id"
+        class="attachment-card"
+      >
+        <div class="attachment-header">
+          <span class="attachment-title">📄 {{ attachment.name }}</span>
+          <button
+            @click="removeAttachment(attachment.id)"
+            class="remove-attachment"
+            aria-label="Remove attachment"
+          >
+            ✕
+          </button>
+        </div>
+        <textarea
+          v-model="attachment.content"
+          class="attachment-content"
+          rows="4"
+        ></textarea>
+      </div>
     </div>
 
-    <div v-if="isExtractingPdf" class="pdf-extracting">
-      🔄 Extracting text from PDF...
+    <div v-if="isExtractingFile" class="file-extracting">
+      🔄 Extracting text from file...
     </div>
 
     <!-- Model Selection Dropdowns -->
   <div class="model-selection">
     <div class="model-group">
-      <label for="adu-select" class="model-label">ADU Classifier:</label>
+      <label for="adu-select" class="model-label">ADU Identifier + Classifier:</label>
       <select
         id="adu-select"
         v-model="selectedAduModel"
@@ -166,14 +186,17 @@ import workerSrc from 'pdfjs-dist/build/pdf.worker.mjs?url'
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc
 
 const textInput = ref('')
-const selectedFile = ref(null)
+const attachments = ref([])
 const fileInput = ref(null)
 const textarea = ref(null)
 const inputContainer = ref(null)
-const isExtractingPdf = ref(false)
+const isExtractingFile = ref(false)
 
 const MIN_HEIGHT = 48
 const MAX_HEIGHT = 256
+const ATTACHMENT_SIZE_LIMIT = 10 * 1024 * 1024
+
+const createAttachmentId = () => Math.random().toString(36).slice(2, 11)
 
 const { 
   isAnalyzing, 
@@ -195,7 +218,9 @@ const {
 } = useChat()
 
 const canSend = computed(() => {
-  return textInput.value.trim() || selectedFile.value
+  const hasManualText = textInput.value.trim().length > 0
+  const hasAttachmentContent = attachments.value.some(attachment => attachment.content.trim().length > 0)
+  return hasManualText || hasAttachmentContent
 })
 
 // Group models by provider
@@ -332,7 +357,7 @@ const triggerFileUpload = () => {
 
 const extractTextFromPdf = async (file) => {
   try {
-    isExtractingPdf.value = true
+    isExtractingFile.value = true
 
     // Read the file as ArrayBuffer
     const arrayBuffer = await file.arrayBuffer()
@@ -383,65 +408,91 @@ const extractTextFromPdf = async (file) => {
     console.error('Error extracting text from PDF:', err)
     throw new Error('Failed to extract text from PDF. Please ensure the file is a valid PDF.')
   } finally {
-    isExtractingPdf.value = false
+    isExtractingFile.value = false
   }
+}
+
+const extractTextFromTxt = async (file) => {
+  try {
+    isExtractingFile.value = true
+    const text = await file.text()
+    return text.trim()
+  } catch (err) {
+    console.error('Error reading text file:', err)
+    throw new Error('Failed to read the text file. Please ensure it is a valid UTF-8 encoded .txt file.')
+  } finally {
+    isExtractingFile.value = false
+  }
+}
+
+const addAttachment = (file, content, type) => {
+  attachments.value.push({
+    id: createAttachmentId(),
+    name: file.name,
+    size: file.size,
+    type,
+    content: content.trim(),
+  })
 }
 
 const handleFileUpload = async (event) => {
-  const file = event.target.files?.[0]
-  if (file) {
-    // Check if it's a PDF (fallback to extension check if type is missing)
+  const fileList = event.target.files ? Array.from(event.target.files) : []
+  if (fileList.length === 0) {
+    return
+  }
+
+  for (const file of fileList) {
     const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name)
-    if (!isPdf) {
-      error.value = 'Please select a PDF file'
-      return
+    const isText = file.type === 'text/plain' || /\.txt$/i.test(file.name)
+
+    if (!isPdf && !isText) {
+      error.value = `Unsupported file "${file.name}". Please select a PDF or plain text (.txt) file.`
+      continue
     }
 
-    // Check file size (limit to 10MB)
-    if (file.size > 10 * 1024 * 1024) {
-      error.value = 'PDF file is too large. Please select a file smaller than 10MB.'
-      return
+    if (file.size > ATTACHMENT_SIZE_LIMIT) {
+      error.value = `"${file.name}" is too large. Please select a file smaller than 10MB.`
+      continue
     }
 
     try {
-      // Extract text from PDF
-      const extractedText = await extractTextFromPdf(file)
+      const extractedText = isPdf
+        ? await extractTextFromPdf(file)
+        : await extractTextFromTxt(file)
 
-      // Check if text was extracted
       if (!extractedText || extractedText.trim().length === 0) {
-        error.value = 'No text could be extracted from this PDF. The file might be image-based or corrupted.'
-        return
+        error.value = isPdf
+          ? `No text could be extracted from "${file.name}". The file might be image-based or corrupted.`
+          : `"${file.name}" appears to be empty.`
+        continue
       }
 
-      // Set the extracted text to the textarea (preserving formatting)
-      textInput.value = extractedText
-
-      // Store the file reference for display
-      selectedFile.value = file
-
-      // Auto-resize the textarea to fit content
-      await nextTick()
-      autoResize()
-
+      addAttachment(file, extractedText, isPdf ? 'pdf' : 'txt')
     } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to extract text from PDF. Please ensure the file is a valid PDF.'
-      // Clear the file input
-      if (fileInput.value) {
-        fileInput.value.value = ''
-      }
+      const fallbackMessage = isPdf
+        ? `Failed to extract text from "${file.name}". Please ensure it is a valid PDF.`
+        : `Failed to read "${file.name}". Please ensure it is a UTF-8 encoded .txt file.`
+      error.value = err instanceof Error ? err.message : fallbackMessage
     }
   }
-}
 
-const clearSelectedFile = () => {
-  selectedFile.value = null
   if (fileInput.value) {
     fileInput.value.value = ''
   }
-  // Clear the message content when PDF is removed
-  textInput.value = ''
-  resetTextarea()
 }
+
+
+const removeAttachment = (attachmentId) => {
+  attachments.value = attachments.value.filter(attachment => attachment.id !== attachmentId)
+}
+
+const clearAttachments = () => {
+  attachments.value = []
+  if (fileInput.value) {
+    fileInput.value.value = ''
+  }
+}
+
 
 const resetTextarea = () => {
   if (textarea.value && inputContainer.value) {
@@ -451,18 +502,43 @@ const resetTextarea = () => {
   }
 }
 
+
+const buildMessageText = () => {
+  const segments = []
+  const manual = textInput.value.trim()
+  if (manual.length > 0) {
+    segments.push(manual)
+  }
+
+  attachments.value.forEach(attachment => {
+    const body = attachment.content.trim()
+    if (body.length === 0) {
+      return
+    }
+
+    const header = `File (${attachment.type.toUpperCase()}): ${attachment.name}`
+    segments.push(`${header}\n${body}`)
+  })
+
+  return segments.join('\n\n').trim()
+}
+
+
+
 const handleSendMessage = async () => {
   if (!canSend.value || isAnalyzing.value) return
 
-  const messageData = {
-    text: textInput.value
+  const messageText = buildMessageText()
+  if (!messageText) {
+    return
   }
 
-  await sendMessage(messageData)
+  await sendMessage({
+    text: messageText
+  })
 
-  // Clear inputs after sending
   textInput.value = ''
-  clearSelectedFile()
+  clearAttachments()
 
   // Reset textarea to minimum size
   resetTextarea()
@@ -679,26 +755,64 @@ onMounted(() => {
   cursor: not-allowed;
 }
 
-.selected-file {
+.attachments {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 8px;
-  padding: 8px 12px;
-  background: rgba(66, 153, 225, 0.1);
-  border: 1px solid #4299e1;
-  border-radius: 6px;
-  font-size: 14px;
-  color: #4299e1;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
 }
 
-.clear-file {
+.attachment-card {
+  background: rgba(66, 153, 225, 0.08);
+  border: 1px solid #4299e1;
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.attachment-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #e2e8f0;
+  font-weight: 500;
+}
+
+.attachment-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.remove-attachment {
   background: none;
   border: none;
-  color: #4299e1;
+  color: #f56565;
   cursor: pointer;
-  padding: 0;
+  padding: 4px 8px;
+  border-radius: 4px;
   font-size: 12px;
+  transition: background 0.2s;
+}
+
+.remove-attachment:hover {
+  background: rgba(245, 101, 101, 0.15);
+}
+
+.attachment-content {
+  width: 100%;
+  background: #1a202c;
+  border: 1px solid #4a5568;
+  border-radius: 6px;
+  color: #e2e8f0;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 120px;
+  line-height: 1.4;
 }
 
 .error-message {
@@ -737,7 +851,7 @@ onMounted(() => {
   color: #c53030;
 }
 
-.pdf-extracting {
+.file-extracting {
   display: flex;
   align-items: center;
   gap: 8px;

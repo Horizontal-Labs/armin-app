@@ -18,7 +18,7 @@ import { useChat } from '@/composables/useChat'
 const { loadData } = useChat()
 
 onMounted(() => {
-  loadData()
+  void loadData()
 })
 </script>
 
