@@ -89,8 +89,9 @@ const props = defineProps<Props>()
 
 const graphContainer = ref<HTMLElement>()
 const isVisible = ref(false)
-const selectedLayout = ref('grid')  // Default to grid layout
+const selectedLayout = ref('cose-bilkent')  // Default to grouped layout
 let cy: any = null
+let tooltipEl: HTMLDivElement | null = null
 
 const zoomIn = () => {
   if (cy) {
@@ -138,8 +139,132 @@ const toggleGraph = () => {
   }
 }
 
+function ensureTooltipElement(): HTMLDivElement | null {
+  if (!graphContainer.value) return null
+  if (!tooltipEl) {
+    tooltipEl = document.createElement('div')
+    tooltipEl.className = 'graph-tooltip'
+    tooltipEl.style.opacity = '0'
+    tooltipEl.style.left = '0px'
+    tooltipEl.style.top = '0px'
+    graphContainer.value.appendChild(tooltipEl)
+  } else if (tooltipEl.parentElement !== graphContainer.value) {
+    graphContainer.value.appendChild(tooltipEl)
+  }
+  return tooltipEl
+}
+
+function hideTooltip(): void {
+  if (tooltipEl) {
+    tooltipEl.style.opacity = '0'
+  }
+}
+
+function destroyTooltip(): void {
+  if (tooltipEl && tooltipEl.parentElement) {
+    tooltipEl.parentElement.removeChild(tooltipEl)
+    tooltipEl = null
+  }
+}
+
+function positionTooltip(event: any): void {
+  if (!tooltipEl || !graphContainer.value) return
+  const position = event.renderedPosition || { x: 0, y: 0 }
+  const containerWidth = graphContainer.value.clientWidth
+  const containerHeight = graphContainer.value.clientHeight
+  const tooltipRect = tooltipEl.getBoundingClientRect()
+
+  let left = position.x + 18
+  let top = position.y + 18
+
+  const maxLeft = Math.max(0, containerWidth - tooltipRect.width - 12)
+  const maxTop = Math.max(0, containerHeight - tooltipRect.height - 12)
+
+  left = Math.min(Math.max(12, left), maxLeft)
+  top = Math.min(Math.max(12, top), maxTop)
+
+  tooltipEl.style.left = `${left}px`
+  tooltipEl.style.top = `${top}px`
+}
+
+function registerTooltipHandlers(): void {
+  if (!cy) return
+  cy.on('mouseover', 'node', (event: any) => {
+    const el = ensureTooltipElement()
+    if (!el) return
+    el.textContent = event.target.data('fullText') || event.target.data('label') || ''
+    positionTooltip(event)
+    el.style.opacity = '1'
+  })
+
+  cy.on('mouseout', 'node', () => {
+    hideTooltip()
+  })
+
+  cy.on('mousemove', 'node', (event: any) => {
+    positionTooltip(event)
+  })
+}
+
+function clearHighlights(): void {
+  if (!cy) return
+  cy.elements().removeClass('highlighted-claim highlighted-premise highlighted-edge faded')
+  hideTooltip()
+}
+
+function registerHighlightHandlers(): void {
+  if (!cy) return
+
+  const highlightClaim = (claimNode: any) => {
+    clearHighlights()
+    cy.elements().addClass('faded')
+    const neighborhood = claimNode.closedNeighborhood()
+    neighborhood.removeClass('faded')
+    claimNode.addClass('highlighted-claim')
+    neighborhood.filter('node[type="premise"]').addClass('highlighted-premise')
+    neighborhood.filter('edge').addClass('highlighted-edge')
+  }
+
+  const highlightPremise = (premiseNode: any) => {
+    clearHighlights()
+    const connectedEdges = premiseNode.connectedEdges()
+    if (!connectedEdges.length) {
+      premiseNode.addClass('highlighted-premise')
+      return
+    }
+    cy.elements().addClass('faded')
+    const neighborhood = premiseNode.closedNeighborhood()
+    neighborhood.removeClass('faded')
+    premiseNode.addClass('highlighted-premise')
+    neighborhood.filter('node[type="claim"]').addClass('highlighted-claim')
+    neighborhood.filter('edge').addClass('highlighted-edge')
+  }
+
+  cy.on('tap', 'node[type="claim"]', (event: any) => {
+    highlightClaim(event.target)
+  })
+
+  cy.on('tap', 'node[type="premise"]', (event: any) => {
+    const premiseNode = event.target
+    if (premiseNode.connectedEdges().length > 0) {
+      highlightPremise(premiseNode)
+    } else {
+      highlightClaim(premiseNode)
+    }
+  })
+
+  cy.on('tap', (event: any) => {
+    if (event.target === cy) {
+      clearHighlights()
+      hideTooltip()
+    }
+  })
+}
+
 const changeLayout = () => {
   if (!cy) return
+
+  clearHighlights()
 
   // Get the number of nodes to adjust spacing
   const nodeCount = cy.nodes().length
@@ -156,40 +281,41 @@ const changeLayout = () => {
 
   // Add specific options for different layouts
   if (selectedLayout.value === 'cose-bilkent') {
-    // Custom grouped layout - align claims horizontally
-    // First, use a preset layout to position claims in a row
     const claims = cy.nodes('[type="claim"]')
     const premises = cy.nodes('[type="premise"]')
-    const claimCount = claims.length
-    const totalWidth = claimCount * 550  // Increased width per claim group for better spacing
+    const claimCount = Math.max(claims.length, 1)
+    const groupSpacing = 420
+    const premiseHorizontalSpacing = 200
+    const premiseVerticalSpacing = 200
+    const claimBaselineY = -60
+    const premiseBaselineY = 220
 
     layoutOptions.name = 'preset'
     layoutOptions.positions = (node: any) => {
       if (node.data('type') === 'claim') {
-        // Position claims in a horizontal row
         const claimIndex = claims.indexOf(node)
-        const x = -totalWidth / 2 + (claimIndex + 0.5) * 550  // Match increased spacing
-        return { x: x, y: 0 }
-      } else {
-        // Position premises above their connected claims
-        // Find connected claim
-        const edges = cy.edges(`[source="${node.id()}"]`)
-        if (edges.length > 0) {
-          const claimId = edges[0].target().id()
-          const claimNode = cy.getElementById(claimId)
-          const claimIndex = claims.indexOf(claimNode)
-          const x = -totalWidth / 2 + (claimIndex + 0.5) * 550  // Match increased spacing
-
-          // Stack premises vertically above the claim with more spacing
-          const connectedPremises = cy.edges(`[target="${claimId}"]`).sources()
-          const premiseIndex = connectedPremises.indexOf(node)
-          const y = -250 - (premiseIndex * 220)  // Increased vertical spacing
-
-          return { x: x, y: y }
-        }
-        // Fallback position for unconnected premises
-        return { x: 0, y: -400 }
+        const baseX = (claimIndex - (claimCount - 1) / 2) * groupSpacing
+        return { x: baseX, y: claimBaselineY }
       }
+
+      const outgoingEdges = cy.edges(`[source="${node.id()}"]`)
+      if (outgoingEdges.length > 0) {
+        const claimId = outgoingEdges[0].target().id()
+        const claimNode = cy.getElementById(claimId)
+        const claimIndex = claims.indexOf(claimNode)
+        const baseX = (claimIndex - (claimCount - 1) / 2) * groupSpacing
+
+        const connectedPremises = cy.edges(`[target="${claimId}"]`).sources()
+        const premiseIndex = connectedPremises.indexOf(node)
+        const horizontalOffset = (connectedPremises.length > 1)
+          ? (premiseIndex - (connectedPremises.length - 1) / 2) * premiseHorizontalSpacing
+          : 0
+        const y = premiseBaselineY + premiseIndex * premiseVerticalSpacing
+        return { x: baseX + horizontalOffset, y }
+      }
+
+      // Fallback for premises without linked claims
+      return { x: 0, y: premiseBaselineY }
     }
     layoutOptions.animate = true
   } else if (selectedLayout.value === 'concentric') {
@@ -300,12 +426,18 @@ const createGraph = () => {
     // Add edges for stance relations
     props.argumentData?.stance_relations.forEach((relation, index) => {
       if (nodeIds.has(relation.claim_id) && nodeIds.has(relation.premise_id)) {
+        const displayLabel = relation.stance === 'pro'
+          ? '✓ Supports'
+          : relation.stance === 'con'
+            ? '✗ Opposes'
+            : 'No stance link'
         elements.push({
           data: {
             id: `edge-${index}`,
             source: relation.premise_id,
             target: relation.claim_id,
             label: relation.stance,
+            displayLabel,
             stance: relation.stance
           }
         })
@@ -324,221 +456,165 @@ const createGraph = () => {
 
       style: [
         {
-          selector: 'node[type="claim"]',
+          selector: 'node',
           style: {
-            'background-color': '#4299e1',
-            'color': '#ffffff',
             'label': 'data(label)',
+            'color': '#e2e8f0',
+            'font-size': '14px',
+            'font-weight': 500,
             'text-wrap': 'wrap',
-            'text-max-width': '280px',
-            'font-size': '16px',
-            'font-weight': 600,
+            'text-max-width': '240px',
             'text-valign': 'center',
             'text-halign': 'center',
-            'width': '300px',
-            'height': '140px',
+            'line-height': 1.45,
+            'padding': '14px',
+            'background-color': '#2d3748',
+            'background-opacity': 0.95,
+            'border-width': 2,
+            'border-color': '#1a202c',
             'shape': 'round-rectangle',
-            'border-width': 3,
-            'border-color': '#2b6cb0',
-            'padding': '20px'
+            'width': 'label',
+            'height': 'label',
+                                    'text-outline-width': 0
+          }
+        },
+        {
+          selector: 'node[type="premise"]',
+          style: {
+            'shape': 'round-rectangle'
+          }
+        },
+        {
+          selector: 'node[type="claim"]',
+          style: {
+            'background-color': '#2b6cb0',
+            'border-color': '#1e4e8c',
+            'color': '#f7fafc',
+            'font-weight': 600
           }
         },
         {
           selector: 'node[type="premise"][stance="pro"]',
           style: {
-            'background-color': '#48bb78',
-            'color': '#ffffff',
-            'label': 'data(label)',
-            'text-wrap': 'wrap',
-            'text-max-width': '280px',
-            'font-size': '16px',
-            'font-weight': 600,
-            'text-valign': 'center',
-            'text-halign': 'center',
-            'width': '300px',
-            'height': '140px',
-            'shape': 'round-rectangle',
-            'border-width': 3,
-            'border-color': '#2f855a',
-            'padding': '20px'
+            'background-color': '#276749',
+            'border-color': '#1c4532',
+            'color': '#f0fff4'
           }
         },
         {
           selector: 'node[type="premise"][stance="con"]',
           style: {
-            'background-color': '#f56565',
-            'color': '#ffffff',
-            'label': 'data(label)',
-            'text-wrap': 'wrap',
-            'text-max-width': '280px',
-            'font-size': '16px',
-            'font-weight': 600,
-            'text-valign': 'center',
-            'text-halign': 'center',
-            'width': '300px',
-            'height': '140px',
-            'shape': 'round-rectangle',
-            'border-width': 3,
-            'border-color': '#c53030',
-            'padding': '20px'
+            'background-color': '#9b2c2c',
+            'border-color': '#742a2a',
+            'color': '#fff5f5'
           }
         },
         {
           selector: 'node[type="premise"][stance="unidentified"]',
           style: {
-            'background-color': '#a0aec0',
-            'color': '#ffffff',
-            'label': 'data(label)',
-            'text-wrap': 'wrap',
-            'text-max-width': '280px',
-            'font-size': '16px',
+            'background-color': '#4a5568',
+            'border-color': '#2d3748',
+            'color': '#edf2f7'
+          }
+        },
+        {
+          selector: 'edge',
+          style: {
+            'width': 3,
+            'curve-style': 'bezier',
+            'target-arrow-shape': 'triangle',
+            'target-arrow-color': '#718096',
+            'line-color': '#718096',
+            'label': 'data(displayLabel)',
+            'color': '#e2e8f0',
+            'font-size': '13px',
             'font-weight': 600,
-            'text-valign': 'center',
-            'text-halign': 'center',
-            'width': '300px',
-            'height': '140px',
-            'shape': 'round-rectangle',
-            'border-width': 3,
-            'border-color': '#718096',
-            'padding': '20px'
+            'text-background-color': 'rgba(15, 23, 42, 0.85)',
+            'text-background-opacity': 1,
+            'text-background-padding': '4px',
+            'text-background-shape': 'roundrectangle',
+            'text-margin-y': -4,
+            'arrow-scale': 1.25,
+            'text-outline-width': 0
           }
         },
         {
           selector: 'edge[stance="pro"]',
           style: {
-            'width': 5,
             'line-color': '#48bb78',
             'target-arrow-color': '#48bb78',
-            'target-arrow-shape': 'triangle',
-            'curve-style': 'bezier',
-            'label': '✓ SUPPORTS',
-            'font-size': '16px',
-            'font-weight': 600,
-            'color': '#48bb78',
-            'text-outline-color': '#1a202c',
-            'text-outline-width': 3,
-            'text-outline-opacity': 0.8,
-            'text-background-color': '#48bb78',
-            'text-background-opacity': 0.2,
-            'text-background-padding': '4px',
-            'text-border-color': '#48bb78',
-            'text-border-width': 1,
-            'text-border-opacity': 0.5
+            'color': '#c6f6d5',
+            'text-background-color': 'rgba(36, 83, 60, 0.9)'
           }
         },
         {
           selector: 'edge[stance="con"]',
           style: {
-            'width': 5,
             'line-color': '#f56565',
             'target-arrow-color': '#f56565',
-            'target-arrow-shape': 'triangle',
-            'curve-style': 'bezier',
-            'label': '✗ OPPOSES',
-            'font-size': '16px',
-            'font-weight': 600,
-            'color': '#f56565',
-            'text-outline-color': '#1a202c',
-            'text-outline-width': 3,
-            'text-outline-opacity': 0.8,
-            'text-background-color': '#f56565',
-            'text-background-opacity': 0.2,
-            'text-background-padding': '4px',
-            'text-border-color': '#f56565',
-            'text-border-width': 1,
-            'text-border-opacity': 0.5
+            'color': '#fed7d7',
+            'text-background-color': 'rgba(127, 29, 29, 0.9)'
           }
         },
         {
           selector: 'edge[stance="unidentified"]',
           style: {
-            'width': 2,
             'line-color': '#a0aec0',
             'target-arrow-color': '#a0aec0',
-            'target-arrow-shape': 'triangle',
-            'curve-style': 'bezier',
-            'label': '? UNCLEAR',
-            'font-size': '14px',
-            'font-weight': 600,
-            'color': '#a0aec0'
+            'color': '#e2e8f0',
+            'line-style': 'dashed',
+            'arrow-scale': 1,
+            'text-background-color': 'rgba(74, 85, 104, 0.85)'
+          }
+        },
+        {
+          selector: '.highlighted-claim',
+          style: {
+            'border-color': '#f6ad55',
+            'border-width': 4,
+          }
+        },
+        {
+          selector: '.highlighted-premise',
+          style: {
+            'border-color': '#63b3ed',
+            'border-width': 4,
+          }
+        },
+        {
+          selector: 'edge.highlighted-edge',
+          style: {
+            'width': 6,
+            'line-color': '#f6ad55',
+            'target-arrow-color': '#f6ad55',
+            'color': '#fed7aa',
+            'text-background-color': 'rgba(101, 62, 14, 0.95)'
+          }
+        },
+        {
+          selector: '.faded',
+          style: {
+            'opacity': 0.15
+          }
+        },
+        {
+          selector: 'edge.faded',
+          style: {
+            'opacity': 0.1,
+            'text-opacity': 0
           }
         }
       ],
       layout: {
-        name: 'preset',
-        positions: (node: any) => {
-          const claimNodes = elements.filter(e => e.data && e.data.type === 'claim')
-          const claimCount = claimNodes.length
-          const totalWidth = claimCount * 550  // Increased spacing
-
-          if (node.data('type') === 'claim') {
-            const claimIndex = claimNodes.findIndex(c => c.data.id === node.id())
-            const x = -totalWidth / 2 + (claimIndex + 0.5) * 550  // Match increased spacing
-            return { x: x, y: 0 }
-          } else {
-            // Find connected claim for this premise
-            const relation = props.argumentData?.stance_relations.find(
-              r => r.premise_id === node.id()
-            )
-            if (relation) {
-              const claimIndex = claimNodes.findIndex(c => c.data.id === relation.claim_id)
-              const x = -totalWidth / 2 + (claimIndex + 0.5) * 550  // Match increased spacing
-
-              // Count premises for this claim to stack them with more spacing
-              const premisesForClaim = props.argumentData?.stance_relations
-                ?.filter(r => r.claim_id === relation.claim_id)
-                ?.map(r => r.premise_id) || []
-              const premiseIndex = premisesForClaim.indexOf(node.id())
-              const y = -250 - (premiseIndex * 220)  // Increased vertical spacing
-
-              return { x: x, y: y }
-            }
-            return { x: 0, y: -400 }
-          }
-        },
-        animate: true,
-        animationDuration: 500,
-        fit: false
+        name: 'preset'
       }
     })
+
+    registerTooltipHandlers()
+    registerHighlightHandlers()
+    changeLayout()
 
     // Add event listeners
-    cy.on('tap', 'node', function (evt: any) {
-      const node = evt.target
-      const fullText = node.data('fullText')
-      if (fullText) {
-        alert(`${node.data('type').toUpperCase()}: ${fullText}`)
-      }
-    })
-
-    // Add custom wheel event listener for Ctrl+Wheel zoom
-    const container = graphContainer.value
-    if (container) {
-      container.addEventListener('wheel', (e: WheelEvent) => {
-        if (e.ctrlKey) {
-          e.preventDefault()
-          const zoomLevel = cy.zoom()
-          const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1
-          const newZoom = Math.min(Math.max(zoomLevel * zoomFactor, 0.2), 3)
-
-          // Get the position relative to the container
-          const rect = container.getBoundingClientRect()
-          const x = e.clientX - rect.left
-          const y = e.clientY - rect.top
-
-          cy.zoom({
-            level: newZoom,
-            renderedPosition: { x, y }
-          })
-        }
-      }, { passive: false })
-    }
-
-    // Ensure all nodes are visible with reasonable padding
-    setTimeout(() => {
-      cy.fit(80)  // More padding for initial view to prevent overlap
-      cy.center()
-    }, 600)
   } catch (error) {
     console.error('Error creating graph:', error)
   }
@@ -560,6 +636,7 @@ watch(() => props.argumentData, (newData) => {
         cy.destroy()
         cy = null
       }
+      destroyTooltip()
     }
   }
 }, { deep: true })
@@ -726,6 +803,23 @@ onUnmounted(() => {
   position: relative;
   box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.3);
 }
+.graph-tooltip {
+  position: absolute;
+  pointer-events: none;
+  max-width: 360px;
+  background: rgba(15, 23, 42, 0.95);
+  color: #f7fafc;
+  padding: 8px 12px;
+  border-radius: 6px;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
+  font-size: 13px;
+  line-height: 1.45;
+  border: 1px solid rgba(99, 179, 237, 0.25);
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  z-index: 20;
+}
+
 
 .graph-legend {
   position: absolute;
