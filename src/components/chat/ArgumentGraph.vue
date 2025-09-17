@@ -10,53 +10,28 @@
         </div>
       </div>
       <div class="header-controls">
-        <select
-          v-model="selectedLayout"
-          @change="changeLayout"
-          class="layout-select"
-          title="Change Layout"
-        >
+        <select v-model="selectedLayout" @change="changeLayout" class="layout-select" title="Change Layout">
           <option value="cose-bilkent">Grouped Layout</option>
           <option value="circle">Circle</option>
           <option value="concentric">Concentric</option>
           <option value="grid">Grid</option>
         </select>
-        <button
-          @click="zoomIn"
-          class="zoom-button"
-          title="Zoom In"
-        >
+        <button @click="zoomIn" class="zoom-button" title="Zoom In">
           ➕
         </button>
-        <button
-          @click="zoomOut"
-          class="zoom-button"
-          title="Zoom Out"
-        >
+        <button @click="zoomOut" class="zoom-button" title="Zoom Out">
           ➖
         </button>
-        <button
-          @click="resetZoom"
-          class="zoom-button"
-          title="Reset Zoom"
-        >
+        <button @click="resetZoom" class="zoom-button" title="Reset Zoom">
           🔍
         </button>
-        <button
-          @click="toggleGraph"
-          class="toggle-button"
-          :class="{ 'active': isVisible }"
-        >
+        <button @click="toggleGraph" class="toggle-button" :class="{ 'active': isVisible }">
           {{ isVisible ? 'Hide Graph' : 'Show Graph' }}
         </button>
       </div>
     </div>
 
-    <div
-      v-show="isVisible"
-      ref="graphContainer"
-      class="graph-container"
-    >
+    <div v-show="isVisible" ref="graphContainer" class="graph-container">
       <div class="graph-legend">
         <div class="legend-title">Legend</div>
         <div class="legend-items">
@@ -74,7 +49,7 @@
           </div>
           <div class="legend-item">
             <div class="legend-color neutral-premise-color"></div>
-            <span>Unclear Stance</span>
+            <span>Premises without stance (no link yet)</span>
           </div>
         </div>
       </div>
@@ -165,10 +140,10 @@ const toggleGraph = () => {
 
 const changeLayout = () => {
   if (!cy) return
-  
+
   // Get the number of nodes to adjust spacing
   const nodeCount = cy.nodes().length
-  
+
   const layoutOptions: any = {
     name: selectedLayout.value,
     animate: true,
@@ -178,7 +153,7 @@ const changeLayout = () => {
     fit: false,  // Don't auto-fit during layout
     boundingBox: undefined  // Use full viewport
   }
-  
+
   // Add specific options for different layouts
   if (selectedLayout.value === 'cose-bilkent') {
     // Custom grouped layout - align claims horizontally
@@ -187,13 +162,13 @@ const changeLayout = () => {
     const premises = cy.nodes('[type="premise"]')
     const claimCount = claims.length
     const totalWidth = claimCount * 550  // Increased width per claim group for better spacing
-    
+
     layoutOptions.name = 'preset'
     layoutOptions.positions = (node: any) => {
       if (node.data('type') === 'claim') {
         // Position claims in a horizontal row
         const claimIndex = claims.indexOf(node)
-        const x = -totalWidth/2 + (claimIndex + 0.5) * 550  // Match increased spacing
+        const x = -totalWidth / 2 + (claimIndex + 0.5) * 550  // Match increased spacing
         return { x: x, y: 0 }
       } else {
         // Position premises above their connected claims
@@ -203,13 +178,13 @@ const changeLayout = () => {
           const claimId = edges[0].target().id()
           const claimNode = cy.getElementById(claimId)
           const claimIndex = claims.indexOf(claimNode)
-          const x = -totalWidth/2 + (claimIndex + 0.5) * 550  // Match increased spacing
-          
+          const x = -totalWidth / 2 + (claimIndex + 0.5) * 550  // Match increased spacing
+
           // Stack premises vertically above the claim with more spacing
           const connectedPremises = cy.edges(`[target="${claimId}"]`).sources()
           const premiseIndex = connectedPremises.indexOf(node)
           const y = -250 - (premiseIndex * 220)  // Increased vertical spacing
-          
+
           return { x: x, y: y }
         }
         // Fallback position for unconnected premises
@@ -240,9 +215,9 @@ const changeLayout = () => {
     layoutOptions.condense = false  // Don't condense empty spaces
     layoutOptions.avoidOverlapPadding = 10  // Add padding between nodes
   }
-  
+
   const layout = cy.layout(layoutOptions)
-  
+
   // Listen for layout completion
   layout.on('layoutstop', () => {
     // After layout is complete, fit with appropriate padding
@@ -254,12 +229,12 @@ const changeLayout = () => {
       } else if (selectedLayout.value === 'grid') {
         padding = 40  // Slightly less for grid to see all nodes
       }
-      
+
       cy.fit(padding)
       cy.center()
     }, 100)
   })
-  
+
   layout.run()
 }
 
@@ -281,283 +256,283 @@ const createGraph = () => {
       cy.destroy()
     }
 
-  const elements: any[] = []
-  const nodeIds = new Set<string>()
+    const elements: any[] = []
+    const nodeIds = new Set<string>()
 
-  // Add claim nodes
-  props.argumentData.claims.forEach(claim => {
-    elements.push({
-      data: {
-        id: claim.id,
-        label: claim.text,
-        fullText: claim.text,
-        type: 'claim',
-        nodeType: 'claim'
-      }
-    })
-    nodeIds.add(claim.id)
-  })
-
-  // Create a map to store premise stances
-  const premiseStanceMap = new Map<string, string>()
-  props.argumentData?.stance_relations.forEach(relation => {
-    if (!premiseStanceMap.has(relation.premise_id)) {
-      premiseStanceMap.set(relation.premise_id, relation.stance)
-    }
-  })
-
-  // Add premise nodes with stance information
-  props.argumentData.premises.forEach(premise => {
-    const stance = premiseStanceMap.get(premise.id) || 'unidentified'
-    elements.push({
-      data: {
-        id: premise.id,
-        label: premise.text,
-        fullText: premise.text,
-        type: 'premise',
-        nodeType: 'premise',
-        stance: stance
-      }
-    })
-    nodeIds.add(premise.id)
-  })
-
-  // Add edges for stance relations
-  props.argumentData?.stance_relations.forEach((relation, index) => {
-    if (nodeIds.has(relation.claim_id) && nodeIds.has(relation.premise_id)) {
+    // Add claim nodes
+    props.argumentData.claims.forEach(claim => {
       elements.push({
         data: {
-          id: `edge-${index}`,
-          source: relation.premise_id,
-          target: relation.claim_id,
-          label: relation.stance,
-          stance: relation.stance
+          id: claim.id,
+          label: claim.text,
+          fullText: claim.text,
+          type: 'claim',
+          nodeType: 'claim'
         }
       })
-    }
-  })
+      nodeIds.add(claim.id)
+    })
 
-                 // Initialize Cytoscape
-               cy = cytoscape({
-                 container: graphContainer.value,
-                 elements: elements,
+    // Create a map to store premise stances
+    const premiseStanceMap = new Map<string, string>()
+    props.argumentData?.stance_relations.forEach(relation => {
+      if (!premiseStanceMap.has(relation.premise_id)) {
+        premiseStanceMap.set(relation.premise_id, relation.stance)
+      }
+    })
 
-                 // Add zoom and pan functionality
-                 minZoom: 0.2,
-                 maxZoom: 3,
-                 wheelSensitivity: 0.1, // Enable scroll zoom with Ctrl
+    // Add premise nodes with stance information
+    props.argumentData.premises.forEach(premise => {
+      const stance = premiseStanceMap.get(premise.id) || 'unidentified'
+      elements.push({
+        data: {
+          id: premise.id,
+          label: premise.text,
+          fullText: premise.text,
+          type: 'premise',
+          nodeType: 'premise',
+          stance: stance
+        }
+      })
+      nodeIds.add(premise.id)
+    })
 
-                 style: [
-                         {
-                     selector: 'node[type="claim"]',
-                     style: {
-                       'background-color': '#4299e1',
-                       'color': '#ffffff',
-                       'label': 'data(label)',
-                       'text-wrap': 'wrap',
-                       'text-max-width': '280px',
-                       'font-size': '16px',
-                       'font-weight': 600,
-                       'text-valign': 'center',
-                       'text-halign': 'center',
-                       'width': '300px',
-                       'height': '140px',
-                       'shape': 'round-rectangle',
-                       'border-width': 3,
-                       'border-color': '#2b6cb0',
-                       'padding': '20px'
-                     }
-                   },
-                         {
-                     selector: 'node[type="premise"][stance="pro"]',
-                     style: {
-                       'background-color': '#48bb78',
-                       'color': '#ffffff',
-                       'label': 'data(label)',
-                       'text-wrap': 'wrap',
-                       'text-max-width': '280px',
-                       'font-size': '16px',
-                       'font-weight': 600,
-                       'text-valign': 'center',
-                       'text-halign': 'center',
-                       'width': '300px',
-                       'height': '140px',
-                       'shape': 'round-rectangle',
-                       'border-width': 3,
-                       'border-color': '#2f855a',
-                       'padding': '20px'
-                     }
-                   },
-                         {
-                     selector: 'node[type="premise"][stance="con"]',
-                     style: {
-                       'background-color': '#f56565',
-                       'color': '#ffffff',
-                       'label': 'data(label)',
-                       'text-wrap': 'wrap',
-                       'text-max-width': '280px',
-                       'font-size': '16px',
-                       'font-weight': 600,
-                       'text-valign': 'center',
-                       'text-halign': 'center',
-                       'width': '300px',
-                       'height': '140px',
-                       'shape': 'round-rectangle',
-                       'border-width': 3,
-                       'border-color': '#c53030',
-                       'padding': '20px'
-                     }
-                   },
-                         {
-                     selector: 'node[type="premise"][stance="unidentified"]',
-                     style: {
-                       'background-color': '#a0aec0',
-                       'color': '#ffffff',
-                       'label': 'data(label)',
-                       'text-wrap': 'wrap',
-                       'text-max-width': '280px',
-                       'font-size': '16px',
-                       'font-weight': 600,
-                       'text-valign': 'center',
-                       'text-halign': 'center',
-                       'width': '300px',
-                       'height': '140px',
-                       'shape': 'round-rectangle',
-                       'border-width': 3,
-                       'border-color': '#718096',
-                       'padding': '20px'
-                     }
-                   },
-                         {
-                     selector: 'edge[stance="pro"]',
-                     style: {
-                       'width': 5,
-                       'line-color': '#48bb78',
-                       'target-arrow-color': '#48bb78',
-                       'target-arrow-shape': 'triangle',
-                       'curve-style': 'bezier',
-                       'label': '✓ SUPPORTS',
-                       'font-size': '16px',
-                       'font-weight': 600,
-                       'color': '#48bb78',
-                       'text-outline-color': '#1a202c',
-                       'text-outline-width': 3,
-                       'text-outline-opacity': 0.8,
-                       'text-background-color': '#48bb78',
-                       'text-background-opacity': 0.2,
-                       'text-background-padding': '4px',
-                       'text-border-color': '#48bb78',
-                       'text-border-width': 1,
-                       'text-border-opacity': 0.5
-                     }
-                   },
-                         {
-                     selector: 'edge[stance="con"]',
-                     style: {
-                       'width': 5,
-                       'line-color': '#f56565',
-                       'target-arrow-color': '#f56565',
-                       'target-arrow-shape': 'triangle',
-                       'curve-style': 'bezier',
-                       'label': '✗ OPPOSES',
-                       'font-size': '16px',
-                       'font-weight': 600,
-                       'color': '#f56565',
-                       'text-outline-color': '#1a202c',
-                       'text-outline-width': 3,
-                       'text-outline-opacity': 0.8,
-                       'text-background-color': '#f56565',
-                       'text-background-opacity': 0.2,
-                       'text-background-padding': '4px',
-                       'text-border-color': '#f56565',
-                       'text-border-width': 1,
-                       'text-border-opacity': 0.5
-                     }
-                   },
-                         {
-                     selector: 'edge[stance="unidentified"]',
-                     style: {
-                       'width': 2,
-                       'line-color': '#a0aec0',
-                       'target-arrow-color': '#a0aec0',
-                       'target-arrow-shape': 'triangle',
-                       'curve-style': 'bezier',
-                       'label': '? UNCLEAR',
-                       'font-size': '14px',
-                       'font-weight': 600,
-                       'color': '#a0aec0'
-                     }
-                   }
-    ],
-                     layout: {
-                   name: 'preset',
-                   positions: (node: any) => {
-                     const claimNodes = elements.filter(e => e.data && e.data.type === 'claim')
-                     const claimCount = claimNodes.length
-                     const totalWidth = claimCount * 550  // Increased spacing
-                     
-                     if (node.data('type') === 'claim') {
-                       const claimIndex = claimNodes.findIndex(c => c.data.id === node.id())
-                       const x = -totalWidth/2 + (claimIndex + 0.5) * 550  // Match increased spacing
-                       return { x: x, y: 0 }
-                     } else {
-                       // Find connected claim for this premise
-                       const relation = props.argumentData?.stance_relations.find(
-                         r => r.premise_id === node.id()
-                       )
-                       if (relation) {
-                         const claimIndex = claimNodes.findIndex(c => c.data.id === relation.claim_id)
-                         const x = -totalWidth/2 + (claimIndex + 0.5) * 550  // Match increased spacing
-                         
-                         // Count premises for this claim to stack them with more spacing
-                         const premisesForClaim = props.argumentData?.stance_relations
-                           ?.filter(r => r.claim_id === relation.claim_id)
-                           ?.map(r => r.premise_id) || []
-                         const premiseIndex = premisesForClaim.indexOf(node.id())
-                         const y = -250 - (premiseIndex * 220)  // Increased vertical spacing
-                         
-                         return { x: x, y: y }
-                       }
-                       return { x: 0, y: -400 }
-                     }
-                   },
-                   animate: true,
-                   animationDuration: 500,
-                   fit: false
-                 }
-  })
-
-  // Add event listeners
-  cy.on('tap', 'node', function(evt: any) {
-    const node = evt.target
-    const fullText = node.data('fullText')
-    if (fullText) {
-      alert(`${node.data('type').toUpperCase()}: ${fullText}`)
-    }
-  })
-
-  // Add custom wheel event listener for Ctrl+Wheel zoom
-  const container = graphContainer.value
-  if (container) {
-    container.addEventListener('wheel', (e: WheelEvent) => {
-      if (e.ctrlKey) {
-        e.preventDefault()
-        const zoomLevel = cy.zoom()
-        const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1
-        const newZoom = Math.min(Math.max(zoomLevel * zoomFactor, 0.2), 3)
-        
-        // Get the position relative to the container
-        const rect = container.getBoundingClientRect()
-        const x = e.clientX - rect.left
-        const y = e.clientY - rect.top
-        
-        cy.zoom({
-          level: newZoom,
-          renderedPosition: { x, y }
+    // Add edges for stance relations
+    props.argumentData?.stance_relations.forEach((relation, index) => {
+      if (nodeIds.has(relation.claim_id) && nodeIds.has(relation.premise_id)) {
+        elements.push({
+          data: {
+            id: `edge-${index}`,
+            source: relation.premise_id,
+            target: relation.claim_id,
+            label: relation.stance,
+            stance: relation.stance
+          }
         })
       }
-    }, { passive: false })
-  }
+    })
+
+    // Initialize Cytoscape
+    cy = cytoscape({
+      container: graphContainer.value,
+      elements: elements,
+
+      // Add zoom and pan functionality
+      minZoom: 0.2,
+      maxZoom: 3,
+      wheelSensitivity: 0.1, // Enable scroll zoom with Ctrl
+
+      style: [
+        {
+          selector: 'node[type="claim"]',
+          style: {
+            'background-color': '#4299e1',
+            'color': '#ffffff',
+            'label': 'data(label)',
+            'text-wrap': 'wrap',
+            'text-max-width': '280px',
+            'font-size': '16px',
+            'font-weight': 600,
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'width': '300px',
+            'height': '140px',
+            'shape': 'round-rectangle',
+            'border-width': 3,
+            'border-color': '#2b6cb0',
+            'padding': '20px'
+          }
+        },
+        {
+          selector: 'node[type="premise"][stance="pro"]',
+          style: {
+            'background-color': '#48bb78',
+            'color': '#ffffff',
+            'label': 'data(label)',
+            'text-wrap': 'wrap',
+            'text-max-width': '280px',
+            'font-size': '16px',
+            'font-weight': 600,
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'width': '300px',
+            'height': '140px',
+            'shape': 'round-rectangle',
+            'border-width': 3,
+            'border-color': '#2f855a',
+            'padding': '20px'
+          }
+        },
+        {
+          selector: 'node[type="premise"][stance="con"]',
+          style: {
+            'background-color': '#f56565',
+            'color': '#ffffff',
+            'label': 'data(label)',
+            'text-wrap': 'wrap',
+            'text-max-width': '280px',
+            'font-size': '16px',
+            'font-weight': 600,
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'width': '300px',
+            'height': '140px',
+            'shape': 'round-rectangle',
+            'border-width': 3,
+            'border-color': '#c53030',
+            'padding': '20px'
+          }
+        },
+        {
+          selector: 'node[type="premise"][stance="unidentified"]',
+          style: {
+            'background-color': '#a0aec0',
+            'color': '#ffffff',
+            'label': 'data(label)',
+            'text-wrap': 'wrap',
+            'text-max-width': '280px',
+            'font-size': '16px',
+            'font-weight': 600,
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'width': '300px',
+            'height': '140px',
+            'shape': 'round-rectangle',
+            'border-width': 3,
+            'border-color': '#718096',
+            'padding': '20px'
+          }
+        },
+        {
+          selector: 'edge[stance="pro"]',
+          style: {
+            'width': 5,
+            'line-color': '#48bb78',
+            'target-arrow-color': '#48bb78',
+            'target-arrow-shape': 'triangle',
+            'curve-style': 'bezier',
+            'label': '✓ SUPPORTS',
+            'font-size': '16px',
+            'font-weight': 600,
+            'color': '#48bb78',
+            'text-outline-color': '#1a202c',
+            'text-outline-width': 3,
+            'text-outline-opacity': 0.8,
+            'text-background-color': '#48bb78',
+            'text-background-opacity': 0.2,
+            'text-background-padding': '4px',
+            'text-border-color': '#48bb78',
+            'text-border-width': 1,
+            'text-border-opacity': 0.5
+          }
+        },
+        {
+          selector: 'edge[stance="con"]',
+          style: {
+            'width': 5,
+            'line-color': '#f56565',
+            'target-arrow-color': '#f56565',
+            'target-arrow-shape': 'triangle',
+            'curve-style': 'bezier',
+            'label': '✗ OPPOSES',
+            'font-size': '16px',
+            'font-weight': 600,
+            'color': '#f56565',
+            'text-outline-color': '#1a202c',
+            'text-outline-width': 3,
+            'text-outline-opacity': 0.8,
+            'text-background-color': '#f56565',
+            'text-background-opacity': 0.2,
+            'text-background-padding': '4px',
+            'text-border-color': '#f56565',
+            'text-border-width': 1,
+            'text-border-opacity': 0.5
+          }
+        },
+        {
+          selector: 'edge[stance="unidentified"]',
+          style: {
+            'width': 2,
+            'line-color': '#a0aec0',
+            'target-arrow-color': '#a0aec0',
+            'target-arrow-shape': 'triangle',
+            'curve-style': 'bezier',
+            'label': '? UNCLEAR',
+            'font-size': '14px',
+            'font-weight': 600,
+            'color': '#a0aec0'
+          }
+        }
+      ],
+      layout: {
+        name: 'preset',
+        positions: (node: any) => {
+          const claimNodes = elements.filter(e => e.data && e.data.type === 'claim')
+          const claimCount = claimNodes.length
+          const totalWidth = claimCount * 550  // Increased spacing
+
+          if (node.data('type') === 'claim') {
+            const claimIndex = claimNodes.findIndex(c => c.data.id === node.id())
+            const x = -totalWidth / 2 + (claimIndex + 0.5) * 550  // Match increased spacing
+            return { x: x, y: 0 }
+          } else {
+            // Find connected claim for this premise
+            const relation = props.argumentData?.stance_relations.find(
+              r => r.premise_id === node.id()
+            )
+            if (relation) {
+              const claimIndex = claimNodes.findIndex(c => c.data.id === relation.claim_id)
+              const x = -totalWidth / 2 + (claimIndex + 0.5) * 550  // Match increased spacing
+
+              // Count premises for this claim to stack them with more spacing
+              const premisesForClaim = props.argumentData?.stance_relations
+                ?.filter(r => r.claim_id === relation.claim_id)
+                ?.map(r => r.premise_id) || []
+              const premiseIndex = premisesForClaim.indexOf(node.id())
+              const y = -250 - (premiseIndex * 220)  // Increased vertical spacing
+
+              return { x: x, y: y }
+            }
+            return { x: 0, y: -400 }
+          }
+        },
+        animate: true,
+        animationDuration: 500,
+        fit: false
+      }
+    })
+
+    // Add event listeners
+    cy.on('tap', 'node', function (evt: any) {
+      const node = evt.target
+      const fullText = node.data('fullText')
+      if (fullText) {
+        alert(`${node.data('type').toUpperCase()}: ${fullText}`)
+      }
+    })
+
+    // Add custom wheel event listener for Ctrl+Wheel zoom
+    const container = graphContainer.value
+    if (container) {
+      container.addEventListener('wheel', (e: WheelEvent) => {
+        if (e.ctrlKey) {
+          e.preventDefault()
+          const zoomLevel = cy.zoom()
+          const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1
+          const newZoom = Math.min(Math.max(zoomLevel * zoomFactor, 0.2), 3)
+
+          // Get the position relative to the container
+          const rect = container.getBoundingClientRect()
+          const x = e.clientX - rect.left
+          const y = e.clientY - rect.top
+
+          cy.zoom({
+            level: newZoom,
+            renderedPosition: { x, y }
+          })
+        }
+      }, { passive: false })
+    }
 
     // Ensure all nodes are visible with reasonable padding
     setTimeout(() => {
